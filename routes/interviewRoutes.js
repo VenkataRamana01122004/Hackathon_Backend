@@ -7,4 +7,11 @@ const {
 
 router.post("/upload", uploadInterview);
 
+const {
+  compileCode,
+} = require("../controllers/compilerController");
+
+router.post("/compile", compileCode);
+
+
 module.exports = router;

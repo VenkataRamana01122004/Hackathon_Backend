@@ -5,6 +5,9 @@ const sequelize = require("./config/database");
 require("./models/Manager");
 require("./models/Employee");
 require("./models/Candidate");
+require("./models/Interview");
+require("./models/Assignment");
+require("./models/Question");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -29,6 +32,7 @@ const interviewRoutes = require("./routes/interviewRoutes");
 app.use("/api/auth", authRoutes);
 app.use("/api/manager", managerRoutes);
 app.use("/api/interview", interviewRoutes);
+app.use("/api/candidate", candidateRoutes);
 
 
 app.get("/", (req, res) => {

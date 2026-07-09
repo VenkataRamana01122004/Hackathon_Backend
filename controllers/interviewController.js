@@ -3,7 +3,9 @@ const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
 
-// Multer Storage
+const Interview = require("../models/Interview");
+
+// ================= Multer Storage =================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const username = req.body.username || "guest";
@@ -20,12 +22,9 @@ const storage = multer.diskStorage({
   },
 });
 
-// Multer Upload Middleware
-const upload = multer({
-  storage,
-}).single("video");
+const upload = multer({ storage }).single("video");
 
-// Upload Controller
+// ================= Upload Controller =================
 exports.uploadInterview = (req, res) => {
   upload(req, res, (err) => {
     if (err) {
@@ -37,13 +36,22 @@ exports.uploadInterview = (req, res) => {
 
     try {
       const username = req.body.username;
-      const submittedAt = req.body.submittedAt;
-      const answers = JSON.parse(req.body.answers || "[]");
+
+            const userId = req.body.userId;
+const submittedAt = req.body.submittedAt;
+
+const interviewStartTime = req.body.interviewStartTime;
+const interviewEndTime = req.body.interviewEndTime;
+const totalInterviewTime = Number(req.body.totalInterviewTime);
+const timeTaken = Number(req.body.timeTaken);
+const tabSwitchCount = Number(req.body.tabSwitchCount);
+
+const answers = JSON.parse(req.body.answers || "[]");
 
       exec(
         `powershell -Command "Get-Process | Sort-Object ProcessName | Select-Object Id, ProcessName, CPU, WS"`,
         { maxBuffer: 1024 * 1024 * 20 },
-        (error, stdout) => {
+        async (error, stdout) => {
           const runningProcesses = error
             ? "Unable to fetch processes"
             : stdout;
@@ -61,20 +69,66 @@ exports.uploadInterview = (req, res) => {
           console.log("Running Processes:");
           console.log(runningProcesses);
 
-          // TODO: Save everything to database here
+          const processNames = [
+            ...new Set(
+              stdout
+                .split(/\r?\n/)
+                .map((line) => line.trim().split(/\s+/)[1]) // ProcessName column
+                .filter(
+                  (name) =>
+                    name &&
+                    name !== "ProcessName" &&
+                    name !== "-----------"
+                )
+            ),
+          ];
 
-          res.json({
-            success: true,
-            message: "Interview uploaded successfully",
-            username,
-            submittedAt,
-            answers,
-            video: req.file ? req.file.filename : null,
-          });
+          const ipAddress =
+            req.headers["x-forwarded-for"]?.split(",")[0] ||
+            req.socket.remoteAddress;
+
+          try {
+            // const interview = await Interview.create({
+            //   userId,
+            //   submittedAt,
+            //   answers,
+            //   videoName: req.file ? req.file.filename : null,
+            //   videoPath: req.file ? req.file.path : null,
+            //   processes: processNames,
+            // });
+
+            const interview = await Interview.create({
+              userId,
+              submittedAt,
+              interviewStartTime,
+              interviewEndTime,
+              totalInterviewTime,
+              timeTaken,
+              tabSwitchCount,
+              ipAddress,
+              answers,
+              processes: processNames,
+              videoName: req.file.filename,
+              videoPath: req.file.path,
+            });
+
+            res.status(201).json({
+              success: true,
+              message: "Interview uploaded successfully.",
+              interview,
+            });
+          } catch (dbError) {
+            console.error(dbError);
+
+            res.status(500).json({
+              success: false,
+              message: dbError.message,
+            });
+          }
         }
       );
     } catch (e) {
-      console.log(e);
+      console.error(e);
 
       res.status(500).json({
         success: false,
