@@ -8,6 +8,9 @@ require("./models/Candidate");
 require("./models/Interview");
 require("./models/Assignment");
 require("./models/Question");
+require("./models/Bitsexam");
+require("./models/MCQQuestion");
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/manager", managerRoutes);
 app.use("/api/interview", interviewRoutes);
 app.use("/api/candidate", candidateRoutes);
+app.use("/resumes",express.static("resumes"));
 
 
 app.get("/", (req, res) => {
@@ -50,6 +54,7 @@ async function startServer() {
 
         // Sync models with database
         await sequelize.sync({ alter: true });
+        // await sequelize.sync();
         console.log("✅ Database Synced.");
 
         // Start Express server

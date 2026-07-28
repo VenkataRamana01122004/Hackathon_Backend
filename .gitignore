@@ -3,3 +3,6 @@ node_modules/
 uploads/
 logs/
 coverage/
+submissions/
+models mongo/
+resumes/

@@ -56,8 +56,8 @@ const Candidate = sequelize.define(
     },
 
     experience: {
-      type: DataTypes.FLOAT,
-      defaultValue: 0,
+       type: DataTypes.STRING(100),
+      defaultValue: "0 Years",
     },
 
     skills: {
@@ -73,11 +73,11 @@ const Candidate = sequelize.define(
     status: {
       type: DataTypes.ENUM(
         "Registered",
-        "Scheduled",
-        "Interviewing",
         "Completed",
-        "Selected",
-        "Rejected"
+        "Rejected",
+        "Interview Scheduled",
+        "Eligible",
+        "Qualified"
       ),
       defaultValue: "Registered",
     },
@@ -85,6 +85,31 @@ const Candidate = sequelize.define(
     role: {
       type: DataTypes.ENUM("Candidate"),
       defaultValue: "Candidate",
+    },
+    appliedRole: {
+      type: DataTypes.STRING(255),
+      defaultValue: "Not Decided",
+    },
+    bitsExamStatus: {
+      type: DataTypes.ENUM("Pending", "Passed", "Failed", "Not Applicable","Process"),
+      defaultValue: "Pending",
+    },
+    codingExamStatus: {
+      type: DataTypes.ENUM("Pending", "Passed", "Failed", "Not Applicable","Process"),
+      defaultValue: "Pending",
+    },
+
+    interviewStatus: {
+      type: DataTypes.ENUM("Pending", "Scheduled", "Completed", "Passed", "Failed", "Cancelled"),
+      defaultValue: "Pending",
+    },
+    interviewSchedule: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    assignedEmployeeId: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
     },
   },
   {
@@ -94,7 +119,9 @@ const Candidate = sequelize.define(
 );
 
 // Auto Generate CAN0001
-Candidate.beforeCreate(async (candidate) => {
+Candidate.beforeValidate(async (candidate) => {
+  if (candidate.candidateId) return;
+
   const lastCandidate = await Candidate.findOne({
     order: [["id", "DESC"]],
   });
@@ -103,10 +130,30 @@ Candidate.beforeCreate(async (candidate) => {
 
   if (lastCandidate && lastCandidate.candidateId) {
     number =
-      parseInt(lastCandidate.candidateId.replace("CAN", "")) + 1;
+      parseInt(lastCandidate.candidateId.replace("CAN", ""), 10) + 1;
   }
 
-  candidate.candidateId = `CAN${String(number).padStart(4, "0")}`;
+  let newCandidateId = `CAN${String(number).padStart(4, "0")}`;
+
+  // Check duplicate
+  let exists = await Candidate.findOne({
+    where: {
+      candidateId: newCandidateId,
+    },
+  });
+
+  while (exists) {
+    number++;
+    newCandidateId = `CAN${String(number).padStart(4, "0")}`;
+
+    exists = await Candidate.findOne({
+      where: {
+        candidateId: newCandidateId,
+      },
+    });
+  }
+
+  candidate.candidateId = newCandidateId;
 });
 
 module.exports = Candidate;

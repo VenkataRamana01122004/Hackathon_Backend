@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Question = require("./Question");
 
 const Assessment = sequelize.define(
   "Assessment",
@@ -16,83 +15,66 @@ const Assessment = sequelize.define(
       allowNull: false,
     },
 
+    candidateName: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+
+    assignmentStartTime: {
+      type: DataTypes.DATE,
+      allowNull: false,
+    },
+
     submittedAt: {
       type: DataTypes.DATE,
       allowNull: false,
     },
 
-    questionId: {
+    totalTime: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: "questions",
-        key: "id",
-      },
-      onUpdate: "CASCADE",
-      onDelete: "CASCADE",
     },
 
-    writtenCode: {
-      type: DataTypes.TEXT("long"),
-      allowNull: false,
+    submitReason: {
+      type: DataTypes.STRING,
+      defaultValue: "manual",
     },
 
-    processes: {
-      type: DataTypes.JSON,
-      allowNull: false,
-      defaultValue: [],
+    timerExpired: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
 
     videoName: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
 
     videoPath: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+
+    systemInfo: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+
+    proctoring: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: {},
+    },
+
+    answers: {
+      type: DataTypes.JSON,
       allowNull: false,
-    },
-
-    selected: {
-      type: DataTypes.JSON,
-      allowNull: true,
       defaultValue: [],
-    },
-
-    keyStrokeCount: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-    },
-
-    keyLogs: {
-      type: DataTypes.JSON,
-      allowNull: true,
-      defaultValue: [],
-    },
-
-    mouseClickCount: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-    },
-
-    tabShifts: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
     },
 
     ipAddress: {
       type: DataTypes.STRING,
-      allowNull: false,
-    },
-
-    testCasesPassed: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-    },
-
-    totalTestCases: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
+      allowNull: true,
     },
   },
   {
@@ -100,16 +82,5 @@ const Assessment = sequelize.define(
     timestamps: true,
   }
 );
-
-// Relationship
-Question.hasMany(Assessment, {
-  foreignKey: "questionId",
-  as: "assessments",
-});
-
-Assessment.belongsTo(Question, {
-  foreignKey: "questionId",
-  as: "question",
-});
 
 module.exports = Assessment;

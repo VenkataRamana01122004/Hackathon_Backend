@@ -18,7 +18,12 @@
     "multer": "^2.2.0",
     "mysql2": "^3.22.5",
     "sequelize": "^6.37.8",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+
+    "@azure-rest/ai-inference": "latest",
+    "@azure/core-auth": "latest",
+    "@azure/core-sse": "latest"
+    
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
