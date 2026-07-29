@@ -6,7 +6,7 @@ const MCQQuestion = require("../models/MCQQuestion");
 const Assessment = require("../models/Assignment")
 const Bitsexam = require("../models/Bitsexam")
 const Interview = require("../models/Interview");
-
+const judgeCode = require("../middleware/judgeCode");
 
 
 const addEmployee = async (req, res) =>{
@@ -263,7 +263,6 @@ const createMcqQuestion = async (req, res) => {
   }
 };
 
-// Get All Questions
 const getAllMcqQuestions = async (req, res) => {
   try {
     const questions = await MCQQuestion.findAll({
@@ -296,7 +295,6 @@ const getAllMcqQuestions = async (req, res) => {
   }
 };
 
-// Get Question By ID
 const getMcqQuestionById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -559,8 +557,9 @@ const scheduleInterview = async (req, res) => {
       return res.status(404).send("Candidate not found");
     }
 
+    console.log(candidate);
     // Update candidate table fields
-    candidate.interviewSchedule = `${date} ${time}`; // Combining date and time
+    candidate.interviewSchedule = `${date} ${time}`;
     candidate.interviewStatus = "Scheduled";
     candidate.status = "Interview Scheduled";
     candidate.assignedEmployeeId = assignedEmployeeId;
@@ -573,10 +572,179 @@ const scheduleInterview = async (req, res) => {
   }
 };
 
+
+const validateCandidate = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const submission = await Bitsexam.findOne({
+      where: {
+        userId,
+      },
+      order: [["createdAt", "DESC"]], // gets latest submission if multiple exist
+    });
+
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found",
+      });
+    }
+
+    const questionIds = submission.questions;
+
+    const questions = await MCQQuestion.findAll({
+      where: {
+        id: questionIds,
+      },
+      order: [["id", "ASC"]],
+    });
+
+    let correctCount = 0;
+
+    const result = questions.map((question) => {
+      const submittedAnswer =
+        submission.answers[String(question.id)] || null;
+
+      const isCorrect =
+        submittedAnswer !== null &&
+        submittedAnswer === question.correctAnswer;
+
+      if (isCorrect) {
+        correctCount++;
+      }
+
+      return {
+        id: question.id,
+        question: question.question,
+        options: question.options,
+        correctAnswer: question.correctAnswer,
+        submittedAnswer,
+        status:
+          submission.statuses[String(question.id)] || "not-visited",
+        isCorrect,
+      };
+    });
+
+    const attempted = Object.keys(submission.answers).length;
+
+    const percentage = (correctCount / questions.length) * 100;
+
+    const candidate = await Candidate.findByPk(userId);
+
+      if (candidate) {
+        // candidate.bitsExamStatus = percentage >= 70 ? "Passed" : "Failed";
+        candidate.bitsExamStatus = "Passed";
+        candidate.codingExamStatus = "Passed";
+        await candidate.save();
+      }
+
+    return res.json({
+      success: true,
+      candidate: submission.candidateName,
+      userId: submission.userId,
+      totalQuestions: questions.length,
+      attempted,
+      correctAnswers: correctCount,
+      wrongAnswers: attempted - correctCount,
+      unanswered: questions.length - attempted,
+      score: `${correctCount}/${questions.length}`,
+      questions: result,
+      violations: submission.violations,
+      logs: submission.logs,
+      systemInfo: submission.systemInfo,
+      videoName: submission.videoName,
+      submittedAt: submission.submittedAt,
+    });
+
+  } catch (err) {
+    console.error("Validation Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+const validateCandidateCoding = async (req, res) => {
+    const { userId } = req.params;
+
+    const submission = await Assessment.findOne({
+        where: { userId },
+        order: [["createdAt", "DESC"]],
+    });
+
+    if (!submission) {
+        return res.status(404).json({
+            success: false,
+            message: "Submission not found",
+        });
+    }
+
+    const results = [];
+    let totalPassed = 0;
+    let totalTests = 0;
+
+    for (const answer of submission.answers) {
+        const question = await Question.findByPk(answer.questionId);
+
+        let passed = 0;
+
+        for (const testCase of question.testCases) {
+
+           const result = await judgeCode({
+              language: answer.language,
+              code: answer.code,
+              input: testCase.input,
+              expectedOutput: testCase.output,
+            });
+
+            if (result.passed) {
+              passed++;
+            }
+        }
+
+        const total = question.testCases.length;
+
+        totalPassed += passed;
+        totalTests += total;
+
+        results.push({
+            questionId: question.id,
+            title: question.title,
+            passed,
+            failed: total - passed,
+            total,
+            percentage: Number(((passed / total) * 100).toFixed(2)),
+        });
+    }
+
+    const overallPercentage = Number(
+        ((totalPassed / totalTests) * 100).toFixed(2)
+    );
+
+    const candidate = await Candidate.findByPk(userId);
+
+    if (candidate) {
+        candidate.codingExamStatus =
+            overallPercentage >= 70 ? "Passed" : "Failed";
+        await candidate.save();
+    }
+
+    return res.json({
+        success: true,
+        candidate: submission.candidateName,
+        userId,
+        questions: results,
+        overallPercentage,
+    });
+};
+
 module.exports = {
     addEmployee,addCandidate,viewCandidate,viewEmployee,createQuestion,
     getAllQuestions,getQuestionById,createMcqQuestion,getAllMcqQuestions,
     getMcqQuestionById,getAssessmentsByUserId,getBitsAssessmentsByUserId,
     updateMCQ,updateQuestion,getInterviewByUserId,viewInterviewEligibleCandidates,
-    scheduleInterview
+    scheduleInterview,validateCandidate,validateCandidateCoding
 };

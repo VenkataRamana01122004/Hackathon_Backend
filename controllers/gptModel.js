@@ -1,4 +1,4 @@
-const token="key kosam vachava generate chesukondi";
+const token="";
 
 const ModelClient = require("@azure-rest/ai-inference").default;
 const { isUnexpected } = require("@azure-rest/ai-inference");

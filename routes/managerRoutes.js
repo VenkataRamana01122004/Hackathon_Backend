@@ -31,4 +31,7 @@ router.get("/getInterviewDetailsByUserId/:userId", managercontroller.getIntervie
 
 router.put("/schedule/:candidateId", managercontroller.scheduleInterview);
 
+router.get("/validatecandidate/:userId",managercontroller.validateCandidate);
+router.get("/validateCandidateCoding/:userId",managercontroller.validateCandidateCoding);
+
 module.exports = router;

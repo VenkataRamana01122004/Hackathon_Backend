@@ -53,8 +53,8 @@ async function startServer() {
         console.log("✅ MySQL Connected Successfully.");
 
         // Sync models with database
-        await sequelize.sync({ alter: true });
-        // await sequelize.sync();
+        // await sequelize.sync({ alter: true });
+        await sequelize.sync();
         console.log("✅ Database Synced.");
 
         // Start Express server
