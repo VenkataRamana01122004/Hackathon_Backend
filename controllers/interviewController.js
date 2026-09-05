@@ -121,9 +121,14 @@ exports.uploadInterview = (req, res) => {
               ipAddress,
               answers,
               processes: processNames,
-              videoName: req.file ? req.file.filename : null,
-              videoPath: req.file ? req.file.path : null,
+              videoName: req.file ? req.file.filename : "not-recorded.webm",
+              videoPath: req.file ? req.file.path : "not-recorded",
             });
+
+            await Candidate.update(
+              { interviewStatus: "Completed" },
+              { where: { id: userId } }
+            );
 
             res.status(201).json({
               success: true,

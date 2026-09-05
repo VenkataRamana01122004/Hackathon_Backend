@@ -6,7 +6,7 @@ const {
   generateCodingQuestions,uploadInterviewbrowser
 } = require("../controllers/interviewController");
 
-// router.post("/upload", uploadInterview);
+router.post("/upload", uploadInterview);
 router.post("/uploadbrowser", uploadInterviewbrowser);
 router.post("/submitAssignment", submitAssignment);
 router.post("/submitbitsassessment", submitbitsassessment);

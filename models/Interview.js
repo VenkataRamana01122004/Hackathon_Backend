@@ -13,7 +13,7 @@ const Interview = sequelize.define(
     },
 
     userId: {
-      type: DataTypes.UUID,
+      type: DataTypes.INTEGER,
       allowNull: false,
     },
 
@@ -34,12 +34,12 @@ const Interview = sequelize.define(
 
     videoName: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
 
     videoPath: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
 
     interviewStartTime: {
