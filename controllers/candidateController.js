@@ -10,6 +10,7 @@ const MCQQuestion = require("../models/MCQQuestion");
 const Assessment = require("../models/Assignment")
 const Bitsexam = require("../models/Bitsexam")
 const Interview = require("../models/Interview");
+const InterviewQuestion = require("../models/InterviewQuestion");
 const { Sequelize } = require("sequelize");
 
 
@@ -129,7 +130,61 @@ const uploadInterview = (req, res) => {
   });
 };
 
+const getInterviewQuestions = async (req, res) => {
+  try {
+    // Declare required counts
+    const hrCount = 1;
+    const behaviorCount = 1;
+    const technicalCount = 1;
+
+    // Fetch questions by type
+    const [hrQuestions, behaviorQuestions, technicalQuestions] =
+      await Promise.all([
+        InterviewQuestion.findAll({
+          where: { questionType: "HR", isActive: true },
+        }),
+        InterviewQuestion.findAll({
+          where: { questionType: "Behavioral", isActive: true },
+        }),
+        InterviewQuestion.findAll({
+          where: { questionType: "Technical", isActive: true },
+        }),
+      ]);
+
+    // Randomly shuffle and select the required count
+    const getRandomQuestions = (questions, count) =>
+      questions
+        .sort(() => Math.random() - 0.5)
+        .slice(0, count);
+
+    const selectedQuestions = [
+      ...getRandomQuestions(technicalQuestions, technicalCount),
+      ...getRandomQuestions(behaviorQuestions, behaviorCount),
+      ...getRandomQuestions(hrQuestions, hrCount),
+    ];
+
+    // Shuffle the final combined list
+    // selectedQuestions.sort(() => Math.random() - 0.5);
+
+    return res.status(200).json({
+      success: true,
+      message: "Random interview questions fetched successfully",
+      count: selectedQuestions.length,
+      data: selectedQuestions,
+    });
+  } catch (error) {
+    console.error("Get interview questions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch interview questions",
+      error: error.message,
+    });
+  }
+};
+
+
 
 module.exports = {
-    getQuestions,uploadInterview,getMcqQuestions
+    getQuestions,uploadInterview,getMcqQuestions,getInterviewQuestions
 };

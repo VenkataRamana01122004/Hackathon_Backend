@@ -323,71 +323,56 @@ exports.submitbitsassessment = (req, res) => {
       const logs = JSON.parse(req.body.logs || "[]");
       const systemInfo = JSON.parse(req.body.systemInfo || "{}");
 
-      // console.log("\n========== EXAM SUBMISSION ==========\n");
-
-      // console.log("User ID       :", req.body.username);
-      // console.log("Candidate     :", req.body.candidate);
-      // console.log("Time Left     :", req.body.timeLeft);
-
-      // console.log("\n----- Answers -----");
-      // console.log(answers);
-
-      // console.log("\n----- Statuses -----");
-      // console.log(statuses);
-
-      // console.log("\n----- Questions -----");
-      // console.log(questions);
-
-      // console.log("\n----- Violations -----");
-      // console.log(violations);
-
-      // console.log("\n----- Logs -----");
-      // console.log(logs);
-
-      // console.log("\n----- System Info -----");
-      // console.log(systemInfo);
-
-      // if (req.file) {
-      //   console.log("\n----- Video -----");
-      //   console.log("Video Name :", req.file.filename);
-      //   console.log("Video Path :", req.file.path);
-      // } else {
-      //   console.log("\nNo video uploaded.");
-      // }
-
-      // console.log("\n=====================================\n");
-
       // Save into database
-      const submission = await Bitsexam.create({
-        userId: req.body.username,
-        candidateName: req.body.candidate,
+     // Save or update the existing exam submission
+const submissionData = {
+  userId: req.body.username,
+  candidateName: req.body.candidate,
+  timeLeft: Number(req.body.timeLeft),
+  answers,
+  statuses,
+  questions: questionIds,
+  violations,
+  logs,
+  systemInfo,
+  videoName: req.file ? req.file.filename : null,
+  videoPath: req.file ? req.file.path : null,
+  ipAddress:
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress ||
+    req.ip,
+};
 
-        timeLeft: Number(req.body.timeLeft),
+// Check whether a submission already exists
+let submission = await Bitsexam.findOne({
+  where: {
+    userId: req.body.username,
+  },
+});
 
-        answers,
-        statuses,
-        questions:questionIds,
-        violations,
-        logs,
-        systemInfo,
+if (submission) {
+  // Update existing record
+  await submission.update(submissionData);
+} else {
+  // Create a new record
+  submission = await Bitsexam.create(submissionData);
+}
 
-        videoName: req.file ? req.file.filename : null,
-        videoPath: req.file ? req.file.path : null,
+// Update candidate status
+await Candidate.update(
+  { bitsExamStatus: "Process" },
+  {
+    where: {
+      id: req.body.username,
+    },
+  }
+);
 
-        ipAddress:
-          req.headers["x-forwarded-for"]?.split(",")[0] ||
-          req.socket.remoteAddress ||
-          req.ip,
-      });
-
-            await Candidate.update({bitsExamStatus: "Process",},{where: {id: req.body.username,},});
-
-
-      return res.status(200).json({
-        success: true,
-        message: "Exam submitted successfully.",
-        submissionId: submission.id,
-      });
+return res.status(200).json({
+  success: true,
+  message: submission ? "Exam submitted successfully." : "Exam submitted successfully.",
+  submissionId: submission.id,
+});
 
     } catch (error) {
       console.error("Submission Error:", error);
@@ -401,12 +386,111 @@ exports.submitbitsassessment = (req, res) => {
   });
 };
 
+// exports.submitbitsassessment = (req, res) => {
+//   upload(req, res, async (err) => {
+//     if (err) {
+//       console.error("Upload Error:", err);
+
+//       return res.status(500).json({
+//         success: false,
+//         message: err.message,
+//       });
+//     }
+
+//     try {
+//       // Parse JSON fields
+//       const answers = JSON.parse(req.body.answers || "[]");
+//       const statuses = JSON.parse(req.body.statuses || "[]");
+//       const questions = JSON.parse(req.body.questions || "[]");
+//       const questionIds = questions.map(question => question.id);
+//       const violations = JSON.parse(req.body.violations || "{}");
+//       const logs = JSON.parse(req.body.logs || "[]");
+//       const systemInfo = JSON.parse(req.body.systemInfo || "{}");
+
+//       // console.log("\n========== EXAM SUBMISSION ==========\n");
+
+//       // console.log("User ID       :", req.body.username);
+//       // console.log("Candidate     :", req.body.candidate);
+//       // console.log("Time Left     :", req.body.timeLeft);
+
+//       // console.log("\n----- Answers -----");
+//       // console.log(answers);
+
+//       // console.log("\n----- Statuses -----");
+//       // console.log(statuses);
+
+//       // console.log("\n----- Questions -----");
+//       // console.log(questions);
+
+//       // console.log("\n----- Violations -----");
+//       // console.log(violations);
+
+//       // console.log("\n----- Logs -----");
+//       // console.log(logs);
+
+//       // console.log("\n----- System Info -----");
+//       // console.log(systemInfo);
+
+//       // if (req.file) {
+//       //   console.log("\n----- Video -----");
+//       //   console.log("Video Name :", req.file.filename);
+//       //   console.log("Video Path :", req.file.path);
+//       // } else {
+//       //   console.log("\nNo video uploaded.");
+//       // }
+
+//       // console.log("\n=====================================\n");
+
+//       // Save into database
+//       const submission = await Bitsexam.create({
+//         userId: req.body.username,
+//         candidateName: req.body.candidate,
+
+//         timeLeft: Number(req.body.timeLeft),
+
+//         answers,
+//         statuses,
+//         questions:questionIds,
+//         violations,
+//         logs,
+//         systemInfo,
+
+//         videoName: req.file ? req.file.filename : null,
+//         videoPath: req.file ? req.file.path : null,
+
+//         ipAddress:
+//           req.headers["x-forwarded-for"]?.split(",")[0] ||
+//           req.socket.remoteAddress ||
+//           req.ip,
+//       });
+
+//             await Candidate.update({bitsExamStatus: "Process",},{where: {id: req.body.username,},});
+
+
+//       return res.status(200).json({
+//         success: true,
+//         message: "Exam submitted successfully.",
+//         submissionId: submission.id,
+//       });
+
+//     } catch (error) {
+//       console.error("Submission Error:", error);
+
+//       return res.status(500).json({
+//         success: false,
+//         message: "Failed to submit exam.",
+//         error: error.message,
+//       });
+//     }
+//   });
+// };
+
 
 exports.generateQuestions = async (req, res) => {
   try {
-    const { topic,category, count } = req.body;
+    const { topic,category, count,questionType } = req.body;
 
-    const questions = await generateMCQs(topic,category, count);
+    const questions = await generateMCQs(topic,category, count, questionType);
 
     const savedQuestions = await MCQQuestion.bulkCreate(questions);
 

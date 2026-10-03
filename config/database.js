@@ -3,7 +3,7 @@ const { Sequelize } = require("sequelize");
 const sequelize = new Sequelize(
     "hackathondb",
     "root",
-    "admin@123",
+    "root",
     {
         host: "localhost",
         dialect: "mysql",

@@ -34,4 +34,11 @@ router.put("/schedule/:candidateId", managercontroller.scheduleInterview);
 router.get("/validatecandidate/:userId",managercontroller.validateCandidate);
 router.get("/validateCandidateCoding/:userId",managercontroller.validateCandidateCoding);
 
+router.post("/generate/:userId",managercontroller.generateCandidateResult);
+router.get("/candidateresult/:userId",managercontroller.getCandidateResult);
+
+router.post("/createinterviewquestion",managercontroller.addInterviewQuestion);
+router.get("/getAllInterviewQuestions",managercontroller.getAllInterviewQuestions);
+router.post("/generateAndSaveInterviewQuestions",managercontroller.generateAndSaveInterviewQuestions);
+
 module.exports = router;

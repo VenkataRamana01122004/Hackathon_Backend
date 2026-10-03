@@ -10,7 +10,9 @@ require("./models/Assignment");
 require("./models/Question");
 require("./models/Bitsexam");
 require("./models/MCQQuestion");
-
+require("./models/CandidateResult");
+require("./models/InterviewQuestion");
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;

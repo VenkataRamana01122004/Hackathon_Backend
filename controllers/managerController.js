@@ -7,6 +7,7 @@ const Assessment = require("../models/Assignment")
 const Bitsexam = require("../models/Bitsexam")
 const Interview = require("../models/Interview");
 const judgeCode = require("../middleware/judgeCode");
+const InterviewQuestion = require("../models/InterviewQuestion");
 
 
 const addEmployee = async (req, res) =>{
@@ -573,7 +574,7 @@ const scheduleInterview = async (req, res) => {
 };
 
 
-const validateCandidate = async (req, res) => {
+const validateCandidate_old = async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -667,78 +668,933 @@ const validateCandidate = async (req, res) => {
   }
 };
 
-const validateCandidateCoding = async (req, res) => {
+const axios = require("axios");
+
+const validateCandidateCoding_old = async (req, res) => {
+  try {
     const { userId } = req.params;
 
     const submission = await Assessment.findOne({
-        where: { userId },
-        order: [["createdAt", "DESC"]],
+      where: { userId },
+      order: [["createdAt", "DESC"]],
     });
 
     if (!submission) {
-        return res.status(404).json({
-            success: false,
-            message: "Submission not found",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found",
+      });
     }
 
     const results = [];
     let totalPassed = 0;
     let totalTests = 0;
 
-    for (const answer of submission.answers) {
-        const question = await Question.findByPk(answer.questionId);
+    for (const answer of submission.answers || []) {
+      const question = await Question.findByPk(answer.questionId);
 
-        let passed = 0;
+      if (!question) continue;
 
-        for (const testCase of question.testCases) {
+      const testCases = question.testCases || [];
 
-           const result = await judgeCode({
-              language: answer.language,
-              code: answer.code,
-              input: testCase.input,
-              expectedOutput: testCase.output,
-            });
+      // Send all test cases in ONE request per question.
+      const response = await axios.post(
+        "http://localhost:2004/api/compiler/run",
+        {
+          language: answer.language,
+          code: answer.code,
+          testCases: testCases.map((tc) => ({
+            input: tc.input ?? "",
+            expectedOutput: tc.output ?? "",
+          })),
+        },
+        { timeout: 60000 }
+      );
 
-            if (result.passed) {
-              passed++;
-            }
-        }
+      const testResults = response.data.testResults || [];
+      const passed = testResults.filter((test) => test.passed).length;
+      const total = testCases.length;
 
-        const total = question.testCases.length;
+      totalPassed += passed;
+      totalTests += total;
 
-        totalPassed += passed;
-        totalTests += total;
-
-        results.push({
-            questionId: question.id,
-            title: question.title,
-            passed,
-            failed: total - passed,
-            total,
-            percentage: Number(((passed / total) * 100).toFixed(2)),
-        });
+      results.push({
+        questionId: question.id,
+        title: question.title,
+        passed,
+        failed: total - passed,
+        total,
+        percentage: total
+          ? Number(((passed / total) * 100).toFixed(2))
+          : 0,
+        testResults,
+      });
     }
 
-    const overallPercentage = Number(
-        ((totalPassed / totalTests) * 100).toFixed(2)
-    );
+    const overallPercentage = totalTests
+      ? Number(((totalPassed / totalTests) * 100).toFixed(2))
+      : 0;
 
     const candidate = await Candidate.findByPk(userId);
 
     if (candidate) {
-        candidate.codingExamStatus =
-            overallPercentage >= 70 ? "Passed" : "Failed";
-        await candidate.save();
+      candidate.codingExamStatus =
+        totalTests > 0 && overallPercentage >= 70
+          ? "Passed"
+          : "Failed";
+
+      await candidate.save();
     }
 
     return res.json({
-        success: true,
-        candidate: submission.candidateName,
-        userId,
-        questions: results,
-        overallPercentage,
+      success: true,
+      candidate: submission.candidateName,
+      userId,
+      questions: results,
+      totalPassed,
+      totalTests,
+      overallPercentage,
     });
+  } catch (error) {
+    console.error(
+      "Coding validation error:",
+      error.response?.data || error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to validate coding submission",
+    });
+  }
+};
+
+const {
+  validateCoding,
+  validateBits,
+} = require("../middleware/candidateValidationService");
+
+
+const validateCandidateCoding = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await validateCoding(userId);
+
+    // Update candidate coding status
+    const candidate = await Candidate.findByPk(userId);
+
+    if (candidate) {
+      candidate.codingExamStatus =
+        result.codingStatus;
+
+      await candidate.save();
+    }
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+
+  } catch (error) {
+    console.error(
+      "Coding validation error:",
+      error.response?.data ||
+        error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to validate coding submission",
+    });
+  }
+};
+
+const validateCandidate = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await validateBits(userId);
+
+    // Update candidate BITS status
+    const candidate =
+      await Candidate.findByPk(userId);
+
+    if (candidate) {
+      candidate.bitsExamStatus =
+        result.percentage >= 70
+          ? "Passed"
+          : "Failed";
+
+      await candidate.save();
+    }
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+
+  } catch (error) {
+    console.error(
+      "BITS validation error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to validate BITS submission",
+    });
+  }
+};
+
+const CandidateResult = require("../models/CandidateResult");
+
+// ============================================================
+// GENERATE FINAL CANDIDATE RESULT
+// ============================================================
+const generateCandidateResult_withoutinterview = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const alreadyexistingResult = await CandidateResult.findOne({
+      where: { userId },
+    });
+
+    if (alreadyexistingResult?.resultStatus === "COMPLETED") {
+      return res.status(200).json({
+        success: true,
+        alreadyEvaluated: true,
+        message: "Candidate has already been evaluated.",
+        userId: alreadyexistingResult.userId,
+        candidateName: alreadyexistingResult.candidateName,
+        evaluatedAt: alreadyexistingResult.evaluatedAt,
+      });
+    }
+
+    // ========================================================
+    // CALL EXISTING VALIDATION LOGIC
+    // ========================================================
+
+    let codingResult;
+    let bitsResult;
+
+    try {
+      codingResult = await validateCoding(userId);
+    } catch (error) {
+      console.log("Coding validation skipped:",error.message);
+
+      codingResult = null;
+    }
+
+    try {
+      bitsResult = await validateBits(userId);
+    } catch (error) {
+      console.log("BITS validation skipped:",error.message);
+
+      bitsResult = null;
+    }
+
+    if (codingResult === null && bitsResult === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Candidate evaluation cannot proceed because both Coding and BITS submissions are unavailable.",
+      });
+    }
+
+    // ========================================================
+    // CODING QUESTION-WISE FINAL RESULT
+    // ========================================================
+
+    const coding = codingResult
+      ? codingResult.questions.map((question) => ({
+          questionId: question.questionId,
+
+          title: question.title,
+
+          totalTests: question.total,
+
+          passedTests: question.passed,
+
+          failedTests: question.failed,
+
+          percentage: question.percentage,
+        }))
+      : [];
+
+    // ========================================================
+    // MCQ FINAL RESULT
+    // ========================================================
+
+    const mcq = bitsResult
+      ? {
+          totalQuestions:
+            bitsResult.totalQuestions,
+
+          attempted:
+            bitsResult.attempted,
+
+          correctAnswers:
+            bitsResult.correctAnswers,
+
+          wrongAnswers:
+            bitsResult.wrongAnswers,
+
+          unanswered:
+            bitsResult.unanswered,
+
+          percentage:
+            bitsResult.percentage,
+        }
+      : {
+          totalQuestions: 0,
+          attempted: 0,
+          correctAnswers: 0,
+          wrongAnswers: 0,
+          unanswered: 0,
+          percentage: 0,
+        };
+
+    // ========================================================
+    // SECURITY INFORMATION FROM BITS
+    // ========================================================
+
+    const security = bitsResult
+      ? {
+          tabSwitches: Number(
+            bitsResult.violations?.tabSwitches || 0
+          ),
+
+          fullscreenExits: Number(
+            bitsResult.violations?.fullscreenExits || 0
+          ),
+
+          isBlurred: Boolean(
+            bitsResult.violations?.isBlurred
+          ),
+
+          isOffline: Boolean(
+            bitsResult.violations?.isOffline
+          ),
+        }
+      : {
+          tabSwitches: 0,
+          fullscreenExits: 0,
+          isBlurred: false,
+          isOffline: false,
+        };
+
+    // ========================================================
+    // CODING OVERALL PERCENTAGE
+    // ========================================================
+
+    const codingPercentage =
+      codingResult?.overallPercentage || 0;
+
+    // ========================================================
+    // BITS OVERALL PERCENTAGE
+    // ========================================================
+
+    const mcqPercentage =
+      bitsResult?.percentage || 0;
+
+    // ========================================================
+    // OVERALL SCORE
+    // ========================================================
+    //
+    // Change these weights according to your project.
+    //
+    // Example:
+    // Coding     = 40%
+    // BITS       = 30%
+    // Interview  = 30%
+    //
+    // Interview is not included yet because you haven't
+    // supplied an interview validation function.
+    // ========================================================
+
+    const overallPercentage = Number(
+      (
+        codingPercentage * 0.4 +
+        mcqPercentage * 0.3
+      ).toFixed(2)
+    );
+
+    // ========================================================
+    // CANDIDATE NAME
+    // ========================================================
+
+    const candidateName =
+      codingResult?.candidate ||
+      bitsResult?.candidate ||
+      "Unknown Candidate";
+
+    // ========================================================
+    // FINAL RESULT OBJECT
+    // ========================================================
+
+    const finalResult = {
+      userId,
+
+      candidateName,
+
+      coding,
+
+      mcq,
+
+      interview: {},
+
+      security,
+
+      overallPercentage,
+
+      overallScore: overallPercentage,
+
+      resultStatus: "COMPLETED",
+
+      evaluatedAt: new Date(),
+    };
+
+    // ========================================================
+    // CREATE OR UPDATE FINAL RESULT
+    // ========================================================
+
+    const existingResult =
+      await CandidateResult.findOne({
+        where: {
+          userId,
+        },
+      });
+
+    let savedResult;
+
+    if (existingResult) {
+      await existingResult.update(
+        finalResult
+      );
+
+      savedResult = existingResult;
+    } else {
+      savedResult =
+        await CandidateResult.create(
+          finalResult
+        );
+    }
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
+    return res.status(200).json({
+      success: true,
+
+      message:
+        "Final candidate result generated successfully",
+
+      result: savedResult,
+    });
+
+  } catch (error) {
+    console.error(
+      "Final result generation error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to generate candidate final result",
+      error: error.message,
+    });
+  }
+};
+
+const { evaluateInterviewAnswers } = require("../controllers/gptModel");
+
+const generateCandidateResult = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // ========================================================
+    // 1. CHECK EXISTING RESULT
+    // ========================================================
+
+    const existingResult = await CandidateResult.findOne({
+      where: { userId },
+    });
+
+    if (existingResult?.resultStatus === "COMPLETED") {
+      return res.status(200).json({
+        success: true,
+        alreadyEvaluated: true,
+        message: "Candidate has already been evaluated.",
+        result: existingResult,
+      });
+    }
+
+    // ========================================================
+    // 2. VALIDATE CODING AND BITS SUBMISSIONS
+    // ========================================================
+
+    let codingResult = null;
+    let bitsResult = null;
+
+    try {
+      codingResult = await validateCoding(userId);
+    } catch (error) {
+      console.log("Coding validation skipped:", error.message);
+    }
+
+    try {
+      bitsResult = await validateBits(userId);
+    } catch (error) {
+      console.log("BITS validation skipped:", error.message);
+    }
+
+    if (!codingResult && !bitsResult) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Evaluation cannot proceed because both Coding and BITS submissions are unavailable.",
+      });
+    }
+
+    // ========================================================
+    // 3. CODING QUESTION-WISE RESULTS
+    // ========================================================
+
+    const coding = (codingResult?.questions || []).map((question) => ({
+      questionId: question.questionId,
+      title: question.title,
+      totalTests: question.total,
+      passedTests: question.passed,
+      failedTests: question.failed,
+      percentage: Number(question.percentage || 0),
+    }));
+
+    const codingPercentage = Number(
+      codingResult?.overallPercentage || 0
+    );
+
+    // ========================================================
+    // 4. MCQ / BITS RESULTS
+    // ========================================================
+
+    const mcqPercentage = Number(bitsResult?.percentage || 0);
+
+    const mcq = {
+      totalQuestions: Number(bitsResult?.totalQuestions || 0),
+      attempted: Number(bitsResult?.attempted || 0),
+      correctAnswers: Number(bitsResult?.correctAnswers || 0),
+      wrongAnswers: Number(bitsResult?.wrongAnswers || 0),
+      unanswered: Number(bitsResult?.unanswered || 0),
+      percentage: mcqPercentage,
+    };
+
+    // Set true for AI evaluation, false for default 5 marks per answer
+const USE_AI_EVALUATION = false;
+
+// ========================================================
+// 5. INTERVIEW SCORE - AI OR DEFAULT EVALUATION
+// ========================================================
+
+const interviewSubmission = await Interview.findOne({
+  where: { userId },
+  order: [["createdAt", "DESC"]],
+});
+
+let interview = {
+  totalQuestions: 0,
+  score: 0,
+  totalMarks: 0,
+  percentage: 0,
+  answers: [],
+};
+
+if (interviewSubmission) {
+  const answers = Array.isArray(interviewSubmission.answers)
+    ? interviewSubmission.answers
+    : [];
+
+  let scoredAnswers = [];
+
+  if (USE_AI_EVALUATION) {
+    // AI evaluates each candidate's answer out of 10
+    scoredAnswers = await evaluateInterviewAnswers(answers);
+  } else {
+    // Default: assign 5 marks out of 10 per answer
+    scoredAnswers = answers.map((answer) => ({
+      ...answer,
+      aiScore: 5,
+      explanation: answer.explanation || "Default score assigned.",
+    }));
+  }
+
+  // Calculate total score
+  const totalScore = scoredAnswers.reduce(
+    (sum, answer) => sum + answer.aiScore,
+    0
+  );
+
+  const totalMarks = scoredAnswers.length * 10;
+
+  const percentage =
+    totalMarks > 0
+      ? Number(((totalScore / totalMarks) * 100).toFixed(2))
+      : 0;
+
+  // Save scores and explanations in the database
+  await interviewSubmission.update({
+    answers: scoredAnswers,
+  });
+
+  interview = {
+    totalQuestions: scoredAnswers.length,
+    score: totalScore,
+    totalMarks,
+    percentage,
+    answers: scoredAnswers,
+  };
+}
+
+
+// const interviewSubmission = await Interview.findOne({
+//   where: { userId },
+//   order: [["createdAt", "DESC"]],
+// });
+
+// let interview = {
+//   totalQuestions: 0,
+//   score: 0,
+//   totalMarks: 0,
+//   percentage: 0,
+//   answers: [],
+// };
+
+// if (interviewSubmission) {
+//   // Send all candidate questions and answers to the AI.
+//   const scoredAnswers = await evaluateInterviewAnswers(
+//     interviewSubmission.answers
+//   );
+
+//   // Calculate total score.
+//   const totalScore = scoredAnswers.reduce(
+//     (sum, answer) => sum + answer.aiScore,
+//     0
+//   );
+
+//   const totalMarks = scoredAnswers.length * 10;
+
+//   const percentage =
+//     totalMarks > 0
+//       ? Number(((totalScore / totalMarks) * 100).toFixed(2))
+//       : 0;
+
+//   // Save AI scores and explanations to the database.
+//   await interviewSubmission.update({
+//     answers: scoredAnswers,
+//   });
+
+//   interview = {
+//     totalQuestions: scoredAnswers.length,
+//     score: totalScore,
+//     totalMarks,
+//     percentage,
+//     answers: scoredAnswers,
+//   };
+// }
+
+    // ========================================================
+    // 6. SECURITY INFORMATION
+    // ========================================================
+
+    const violations = bitsResult?.violations || {};
+
+    const security = {
+      tabSwitches: Number(violations.tabSwitches || 0),
+      fullscreenExits: Number(violations.fullscreenExits || 0),
+      isBlurred: Boolean(violations.isBlurred),
+      isOffline: Boolean(violations.isOffline),
+    };
+
+    // ========================================================
+    // 7. OVERALL SCORE
+    // Coding   = 40%
+    // BITS     = 30%
+    // Interview = 30%
+    // ========================================================
+
+    const overallPercentage = Number(
+      (
+        codingPercentage * 0.4 +
+        mcqPercentage * 0.3 +
+        interview.percentage * 0.3
+      ).toFixed(2)
+    );
+
+    // ========================================================
+    // 8. CANDIDATE NAME
+    // ========================================================
+
+    const candidateName =
+      codingResult?.candidate ||
+      bitsResult?.candidate ||
+      "Unknown Candidate";
+
+    // ========================================================
+    // 9. BUILD FINAL RESULT
+    // ========================================================
+
+    const finalResult = {
+      userId,
+      candidateName,
+      coding,
+      mcq,
+      interview,
+      security,
+      overallPercentage,
+      overallScore: overallPercentage,
+      resultStatus: "COMPLETED",
+      evaluatedAt: new Date(),
+    };
+
+    // ========================================================
+    // 10. CREATE OR UPDATE RESULT
+    // ========================================================
+
+    let savedResult;
+
+    if (existingResult) {
+      await existingResult.update(finalResult);
+      savedResult = existingResult;
+    } else {
+      savedResult = await CandidateResult.create(finalResult);
+    }
+
+    // ========================================================
+    // 11. RESPONSE
+    // ========================================================
+
+    return res.status(200).json({
+      success: true,
+      alreadyEvaluated: false,
+      message: "Final candidate result generated successfully.",
+      result: savedResult,
+    });
+  } catch (error) {
+    console.error("Final result generation error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate candidate final result.",
+      error: error.message,
+    });
+  }
+};
+
+const getCandidateResult = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await CandidateResult.findOne({
+      where: { userId },
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate result not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      result,
+    });
+  } catch (error) {
+    console.error("Get candidate result error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get candidate result",
+      error: error.message,
+    });
+  }
+};
+
+const addInterviewQuestion = async (req, res) => {
+  try {
+    const {
+      question,
+      expectedAnswer,
+      category,
+      difficulty,
+      questionType,
+      marks,
+      isActive,
+    } = req.body;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Question is required",
+      });
+    }
+
+    const validDifficulties = ["Easy", "Medium", "Hard"];
+    const validTypes = ["Technical", "HR", "Behavioral"];
+
+    if (
+      difficulty &&
+      !validDifficulties.includes(difficulty)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid difficulty",
+      });
+    }
+
+    if (
+      questionType &&
+      !validTypes.includes(questionType)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid question type",
+      });
+    }
+
+    const newQuestion = await InterviewQuestion.create({
+      question: question.trim(),
+      expectedAnswer,
+      category,
+      difficulty,
+      questionType,
+      marks,
+      isActive,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Interview question added successfully",
+      data: newQuestion,
+    });
+  } catch (error) {
+    console.error("Add interview question error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add interview question",
+      error: error.message,
+    });
+  }
+};
+
+
+const getAllInterviewQuestions = async (req, res) => {
+  try {
+    const questions = await InterviewQuestion.findAll({
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Interview questions fetched successfully",
+      count: questions.length,
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Get interview questions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch interview questions",
+      error: error.message,
+    });
+  }
+};
+
+
+const { generateInterviewQuestions } = require("../controllers/gptModel");
+
+
+const generateAndSaveInterviewQuestions = async (req, res) => {
+  try {
+    const { topic, category, count } = req.body;
+
+    // Validate request
+    if (!topic || !category || count == null) {
+      return res.status(400).json({
+        success: false,
+        message: "topic, category, and count are required",
+      });
+    }
+
+    const numberOfQuestions = Number(count);
+
+    if (
+      !Number.isInteger(numberOfQuestions) ||
+      numberOfQuestions < 1 ||
+      numberOfQuestions > 20
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "count must be an integer between 1 and 20",
+      });
+    }
+
+    const validDifficulties = ["Easy", "Medium", "Hard"];
+
+    if (!validDifficulties.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        message: "category must be Easy, Medium, or Hard",
+      });
+    }
+
+    // Generate interview questions using Groq
+    const questions = await generateInterviewQuestions(
+      topic,
+      category,
+      numberOfQuestions
+    );
+
+    // Prepare data for database
+    const questionData = questions.map((q) => ({
+      question: q.question,
+      expectedAnswer: q.expectedAnswer,
+      category: topic,
+      difficulty: category,
+      questionType: q.questionType,
+      marks: 10,
+      isActive: true,
+    }));
+
+    // Save generated questions to database
+    const savedQuestions = await InterviewQuestion.bulkCreate(
+      questionData,
+      {
+        validate: true,
+      }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Interview questions generated and saved successfully",
+      count: savedQuestions.length,
+      data: savedQuestions,
+    });
+  } catch (error) {
+    console.error("Generate and save interview questions:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate and save interview questions",
+      error: error.message,
+    });
+  }
 };
 
 module.exports = {
@@ -746,5 +1602,6 @@ module.exports = {
     getAllQuestions,getQuestionById,createMcqQuestion,getAllMcqQuestions,
     getMcqQuestionById,getAssessmentsByUserId,getBitsAssessmentsByUserId,
     updateMCQ,updateQuestion,getInterviewByUserId,viewInterviewEligibleCandidates,
-    scheduleInterview,validateCandidate,validateCandidateCoding
+    scheduleInterview,validateCandidate,validateCandidateCoding,generateCandidateResult,
+    getCandidateResult,addInterviewQuestion,getAllInterviewQuestions,generateAndSaveInterviewQuestions
 };
