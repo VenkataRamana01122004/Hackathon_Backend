@@ -93,7 +93,7 @@ exports.uploadInterview = (req, res) => {
 
           const processNames = [
             ...new Set(
-              stdout
+              (stdout || "")
                 .split(/\r?\n/)
                 .map((line) => line.trim().split(/\s+/)[1])
                 .filter(
