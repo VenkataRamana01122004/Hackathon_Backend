@@ -44,6 +44,71 @@ function parseJSONResponse(content) {
   return JSON.parse(cleaned);
 }
 
+function parseCodingQuestions(content) {
+  if (!content || typeof content !== "string") {
+    throw new Error("Groq returned an empty response");
+  }
+
+  let cleaned = content.trim();
+
+  // Remove Markdown code fences if present.
+  cleaned = cleaned
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  let parsed;
+
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (error) {
+    // Try extracting a JSON object from surrounding text.
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+
+    if (start === -1 || end === -1 || end < start) {
+      throw new Error(
+        `Groq returned invalid JSON: ${cleaned.slice(0, 500)}`
+      );
+    }
+
+    try {
+      parsed = JSON.parse(cleaned.slice(start, end + 1));
+    } catch (parseError) {
+      throw new Error(
+        `Unable to parse Groq JSON: ${parseError.message}`
+      );
+    }
+  }
+
+  // Support both { questions: [...] } and a direct array.
+  let questions = Array.isArray(parsed)
+    ? parsed
+    : parsed?.questions;
+
+  // Support alternative wrapper structures.
+  if (!Array.isArray(questions) && Array.isArray(parsed?.data)) {
+    questions = parsed.data;
+  }
+
+  if (!Array.isArray(questions)) {
+    console.error(
+      "Unexpected Groq response structure:",
+      JSON.stringify(parsed).slice(0, 2000)
+    );
+
+    throw new Error(
+      "Groq JSON does not contain a valid questions array"
+    );
+  }
+
+  if (questions.length === 0) {
+    throw new Error("Groq returned an empty questions array");
+  }
+
+  return questions;
+}
+
 
 // ===============================
 // Generate MCQs
@@ -139,12 +204,7 @@ Return only the JSON array.
   }
 }
 
-async function generateMCQs(
-  topic,
-  category,
-  count,
-  questionType
-) {
+async function generateMCQs(topic,category,count,questionType) {
   // ============================================================
   // INPUT VALIDATION
   // ============================================================
@@ -930,11 +990,7 @@ Return ONLY the JSON array.
 // ===============================
 // Generate Coding Questions
 // ===============================
-async function generateCodingQuestions(
-  topic,
-  category,
-  count
-) {
+async function generateCodingQuestions(topic,category,count) {
   try {
     const response = await groq.chat.completions.create({
       model,
@@ -1153,9 +1209,13 @@ Return ONLY the JSON array.
       }
     */
 
+    // ==========================================
+// HANDLE JSON OBJECT
+// ==========================================
+
     let result;
 
-    if (Array.isArray(parsed)) {
+    if (Array.isArray(parsed)) {  
       result = parsed;
     } else if (Array.isArray(parsed.questions)) {
       result = parsed.questions;
@@ -1253,11 +1313,7 @@ Return ONLY the JSON array.
 }
 
 
-async function generateInterviewQuestions(
-  topic,
-  category,
-  count
-) {
+async function generateInterviewQuestions(topic,category,count) {
   try {
     const response = await groq.chat.completions.create({
       model,

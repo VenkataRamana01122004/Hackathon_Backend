@@ -59,6 +59,32 @@ const Candidate = sequelize.define(
        type: DataTypes.STRING(100),
       defaultValue: "0 Years",
     },
+        isRandomSchedule: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
+    examDate: {
+  type: DataTypes.DATEONLY,
+  allowNull: true,
+},
+
+examTime: {
+  type: DataTypes.TIME,
+  allowNull: true,
+},
+coding_question_ids: {
+  type: DataTypes.JSON,
+  allowNull: true,
+  defaultValue: [],
+},
+
+bits_question_ids: {
+  type: DataTypes.JSON,
+  allowNull: true,
+  defaultValue: [],
+},
 
     skills: {
       type: DataTypes.TEXT,
@@ -104,9 +130,15 @@ const Candidate = sequelize.define(
       defaultValue: "Pending",
     },
     interviewSchedule: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
+  type: DataTypes.DATEONLY,
+  allowNull: true,
+},
+
+interviewScheduletime: {
+  type: DataTypes.TIME,
+  allowNull: true,
+},
+
     assignedEmployeeId: {
       type: DataTypes.STRING(50),
       allowNull: true,

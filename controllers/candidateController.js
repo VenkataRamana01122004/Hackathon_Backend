@@ -32,37 +32,195 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage }).single("video");
 
+// const getQuestions = async (req, res) => {
+//   try {
+//     const questions = await Question.findAll({
+//       order: [["createdAt", "DESC"]],
+//       limit: 3
+//     });
+//      setTimeout(() => {
+//       return res.status(200).json({
+//         success: true,
+//         count: questions.length,
+//         data: questions,
+//       });
+//     }, 2000);
+//   } catch (error) {
+//     console.error(error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch questions",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+// const getQuestions = async (req, res) => {
+//   try {
+//     const [easyQuestion, mediumQuestion, hardQuestion] =
+//       await Promise.all([
+//         Question.findOne({
+//           where: {
+//             difficulty: "Easy",
+//             isActive: true,
+//           },
+//           order: Sequelize.literal("RAND()"),
+//         }),
+
+//         Question.findOne({
+//           where: {
+//             difficulty: "Medium",
+//             isActive: true,
+//           },
+//           order: Sequelize.literal("RAND()"),
+//         }),
+
+//         Question.findOne({
+//           where: {
+//             difficulty: "Hard",
+//             isActive: true,
+//           },
+//           order: Sequelize.literal("RAND()"),
+//         }),
+//       ]);
+
+//     const questions = [
+//       easyQuestion,
+//       mediumQuestion,
+//       hardQuestion,
+//     ].filter(Boolean);
+
+//     // Randomize the order of the returned questions
+//     for (let i = questions.length - 1; i > 0; i--) {
+//       const j = Math.floor(Math.random() * (i + 1));
+//       [questions[i], questions[j]] = [questions[j], questions[i]];
+//     }
+
+//     setTimeout(() => {
+//       return res.status(200).json({
+//         success: true,
+//         count: questions.length,
+//         data: questions,
+//       });
+//     }, 2000);
+
+//   } catch (error) {
+//     console.error("Error fetching random questions:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch questions",
+//       error: error.message,
+//     });
+//   }
+// };
+
+const { Op } = require("sequelize");
+
 const getQuestions = async (req, res) => {
+  const { candidate_id } = req.query;
+
   try {
-    const questions = await Question.findAll({
-      order: [["createdAt", "DESC"]],
-      limit: 3
-    });
-     setTimeout(() => {
-      return res.status(200).json({
-        success: true,
-        count: questions.length,
-        data: questions,
+    if (!candidate_id) {
+      return res.status(400).json({
+        success: false,
+        message: "candidate_id is required.",
       });
-    }, 2000);
-  } catch (error) {
-    console.error(error);
+    }
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch questions",
-      error: error.message,
-    });
-  }
-};
+    // Find candidate using the database primary key
+    const candidate = await Candidate.findByPk(candidate_id);
 
-const getMcqQuestions = async (req, res) => {
-  try {
-    const questions = await MCQQuestion.findAll({
-      order: Sequelize.literal("RAND()"),
-      limit: 10,
-    });
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found.",
+      });
+    }
 
+    let questions = [];
+
+    if (candidate.isRandomSchedule === true) {
+      // Fetch coding questions assigned to this candidate
+      const assignedIds = candidate.coding_question_ids || [];
+
+      if (!Array.isArray(assignedIds) || assignedIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          data: [],
+          message: "No coding questions assigned to this candidate.",
+        });
+      }
+
+      const assignedQuestions = await Question.findAll({
+        where: {
+          id: {
+            [Op.in]: assignedIds,
+          },
+          isActive: true,
+        },
+      });
+
+      // Preserve the order of assigned question IDs
+      const questionsById = new Map(
+        assignedQuestions.map((question) => [
+          Number(question.id),
+          question,
+        ])
+      );
+
+      questions = assignedIds
+        .map((id) => questionsById.get(Number(id)))
+        .filter(Boolean);
+    } else {
+      // Existing random selection: one Easy, one Medium, one Hard
+      const [easyQuestion, mediumQuestion, hardQuestion] =
+        await Promise.all([
+          Question.findOne({
+            where: {
+              difficulty: "Easy",
+              isActive: true,
+            },
+            order: Sequelize.literal("RAND()"),
+          }),
+
+          Question.findOne({
+            where: {
+              difficulty: "Medium",
+              isActive: true,
+            },
+            order: Sequelize.literal("RAND()"),
+          }),
+
+          Question.findOne({
+            where: {
+              difficulty: "Hard",
+              isActive: true,
+            },
+            order: Sequelize.literal("RAND()"),
+          }),
+        ]);
+
+      questions = [
+        easyQuestion,
+        mediumQuestion,
+        hardQuestion,
+      ].filter(Boolean);
+
+      // Shuffle the returned questions
+      for (let i = questions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [questions[i], questions[j]] = [
+          questions[j],
+          questions[i],
+        ];
+      }
+    }
+
+    // Optional 2-second delay, retained from your original code
     setTimeout(() => {
       return res.status(200).json({
         success: true,
@@ -70,9 +228,165 @@ const getMcqQuestions = async (req, res) => {
         data: questions,
       });
     }, 2000);
-
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching coding questions:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch questions.",
+      error: error.message,
+    });
+  }
+};
+
+// const getMcqQuestions = async (req, res) => {
+//   const { candidate_id } = req.query;
+//   console.log(candidate_id)
+//   try {
+//     // 10 random AI questions
+//     const aiQuestions = await MCQQuestion.findAll({
+//       where: { category: "AI" },
+//       order: Sequelize.literal("RAND()"),
+//       limit: 10,
+//     });
+
+//     // 1 random SQL question
+//     const sqlQuestions = await MCQQuestion.findAll({
+//       where: { category: "SQL" },
+//       order: Sequelize.literal("RAND()"),
+//       limit: 1,
+//     });
+
+//     // 4 random questions from categories other than AI and SQL
+//     const coreQuestions = await MCQQuestion.findAll({
+//       where: {
+//         category: {
+//           [Op.notIn]: ["AI", "SQL"],
+//         },
+//       },
+//       order: Sequelize.literal("RAND()"),
+//       limit: 4,
+//     });
+
+//     // Combine and shuffle
+//     const questions = [
+//       ...aiQuestions,
+//       ...sqlQuestions,
+//       ...coreQuestions,
+//     ].sort(() => Math.random() - 0.5);
+
+//     return res.status(200).json({
+//       success: true,
+//       count: questions.length,
+//       data: questions,
+//     });
+//   } catch (error) {
+//     console.error("Failed to fetch MCQ questions:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch questions.",
+//       error: error.message,
+//     });
+//   }
+// };
+
+const getMcqQuestions = async (req, res) => {
+  const { candidate_id } = req.query;
+
+  try {
+    if (!candidate_id) {
+      return res.status(400).json({
+        success: false,
+        message: "candidate_id is required.",
+      });
+    }
+
+    // Find candidate by database primary key
+    const candidate = await Candidate.findByPk(candidate_id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found.",
+      });
+    }
+
+    let questions = [];
+
+    if (candidate.isRandomSchedule === true) {
+      // Use the questions assigned to this candidate
+      const assignedIds = candidate.bits_question_ids || [];
+
+      if (!Array.isArray(assignedIds) || assignedIds.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          data: [],
+          message: "No MCQ questions have been assigned to this candidate.",
+        });
+      }
+
+      // Fetch assigned questions in the order of their assigned IDs
+      const assignedQuestions = await MCQQuestion.findAll({
+        where: {
+          id: {
+            [Op.in]: assignedIds,
+          },
+        },
+      });
+
+      const questionsById = new Map(
+        assignedQuestions.map((question) => [
+          Number(question.id),
+          question,
+        ])
+      );
+
+      questions = assignedIds
+        .map((id) => questionsById.get(Number(id)))
+        .filter(Boolean);
+    } else {
+      // Existing random schedule: 10 AI questions
+      const aiQuestions = await MCQQuestion.findAll({
+        where: { category: "AI" },
+        order: Sequelize.literal("RAND()"),
+        limit: 10,
+      });
+
+      // 1 random SQL question
+      const sqlQuestions = await MCQQuestion.findAll({
+        where: { category: "SQL" },
+        order: Sequelize.literal("RAND()"),
+        limit: 1,
+      });
+
+      // 4 random questions excluding AI and SQL
+      const coreQuestions = await MCQQuestion.findAll({
+        where: {
+          category: {
+            [Op.notIn]: ["AI", "SQL"],
+          },
+        },
+        order: Sequelize.literal("RAND()"),
+        limit: 4,
+      });
+
+      // Combine and shuffle
+      questions = [
+        ...aiQuestions,
+        ...sqlQuestions,
+        ...coreQuestions,
+      ].sort(() => Math.random() - 0.5);
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: questions.length,
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Failed to fetch MCQ questions:", error);
 
     return res.status(500).json({
       success: false,

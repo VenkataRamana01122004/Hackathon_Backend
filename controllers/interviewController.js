@@ -282,7 +282,7 @@ exports.submitAssignment = (req, res) => {
       });
 
 
-      await Candidate.update({codingExamStatus: "Process",},{where: {id: data.username,},});
+      await Candidate.update({codingExamStatus: "Process",status:"Completed"},{where: {id: data.username,},});
 
       // Send response ONLY ONCE
       return res.status(200).json({

@@ -40,5 +40,9 @@ router.get("/candidateresult/:userId",managercontroller.getCandidateResult);
 router.post("/createinterviewquestion",managercontroller.addInterviewQuestion);
 router.get("/getAllInterviewQuestions",managercontroller.getAllInterviewQuestions);
 router.post("/generateAndSaveInterviewQuestions",managercontroller.generateAndSaveInterviewQuestions);
+router.put("/updateCandidateSchedule/:id",managercontroller.updateCandidateSchedule);
+router.post("/assignCandidateQuestions",managercontroller.assignCandidateQuestions);
+router.get("/dashboard", managercontroller.getDashboard);
+router.get("/assigned-questions/:candidateId", managercontroller.getAssignedQuestions);
 
 module.exports = router;

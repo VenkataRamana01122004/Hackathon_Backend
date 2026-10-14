@@ -6,8 +6,8 @@ const MCQQuestion = require("../models/MCQQuestion");
 const Assessment = require("../models/Assignment")
 const Bitsexam = require("../models/Bitsexam")
 const Interview = require("../models/Interview");
-const judgeCode = require("../middleware/judgeCode");
 const InterviewQuestion = require("../models/InterviewQuestion");
+const { Op } = require("sequelize");
 
 
 const addEmployee = async (req, res) =>{
@@ -67,12 +67,14 @@ const viewCandidate = async(req,res)=>{
 const viewInterviewEligibleCandidates = async (req, res) => {
   try {
     const candidatedata = await Candidate.findAll({
-      where: {
-        bitsExamStatus: "Passed",
-        codingExamStatus: "Passed",
-      },
-    });
-
+  where: {
+    bitsExamStatus: "Passed",
+    codingExamStatus: "Passed",
+    interviewStatus: {
+      [Op.in]: ["Pending", "Scheduled"],
+    },
+  },
+});
     if (candidatedata.length === 0) {
       return res.status(200).send("DATA NOT FOUND");
     }
@@ -558,9 +560,10 @@ const scheduleInterview = async (req, res) => {
       return res.status(404).send("Candidate not found");
     }
 
-    console.log(candidate);
-    // Update candidate table fields
-    candidate.interviewSchedule = `${date} ${time}`;
+    // console.log(candidate);
+    // console.log(time)
+    candidate.interviewSchedule = date;
+    candidate.interviewScheduletime = time
     candidate.interviewStatus = "Scheduled";
     candidate.status = "Interview Scheduled";
     candidate.assignedEmployeeId = assignedEmployeeId;
@@ -1112,6 +1115,288 @@ const generateCandidateResult_withoutinterview = async (req, res) => {
 };
 
 const { evaluateInterviewAnswers } = require("../controllers/gptModel");
+//imp
+// const generateCandidateResult = async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+
+//     // ========================================================
+//     // 1. CHECK EXISTING RESULT
+//     // ========================================================
+
+//     const existingResult = await CandidateResult.findOne({
+//       where: { userId },
+//     });
+
+//     if (existingResult?.resultStatus === "COMPLETED") {
+//       return res.status(200).json({
+//         success: true,
+//         alreadyEvaluated: true,
+//         message: "Candidate has already been evaluated.",
+//         result: existingResult,
+//       });
+//     }
+
+//     // ========================================================
+//     // 2. VALIDATE CODING AND BITS SUBMISSIONS
+//     // ========================================================
+
+//     let codingResult = null;
+//     let bitsResult = null;
+
+//     try {
+//       codingResult = await validateCoding(userId);
+//     } catch (error) {
+//       console.log("Coding validation skipped:", error.message);
+//     }
+
+//     try {
+//       bitsResult = await validateBits(userId);
+//     } catch (error) {
+//       console.log("BITS validation skipped:", error.message);
+//     }
+
+//     if (!codingResult && !bitsResult) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Evaluation cannot proceed because both Coding and BITS submissions are unavailable.",
+//       });
+//     }
+
+//     // ========================================================
+//     // 3. CODING QUESTION-WISE RESULTS
+//     // ========================================================
+
+//     const coding = (codingResult?.questions || []).map((question) => ({
+//       questionId: question.questionId,
+//       title: question.title,
+//       totalTests: question.total,
+//       passedTests: question.passed,
+//       failedTests: question.failed,
+//       percentage: Number(question.percentage || 0),
+//     }));
+
+//     const codingPercentage = Number(
+//       codingResult?.overallPercentage || 0
+//     );
+
+//     // ========================================================
+//     // 4. MCQ / BITS RESULTS
+//     // ========================================================
+
+//     const mcqPercentage = Number(bitsResult?.percentage || 0);
+
+//     const mcq = {
+//       totalQuestions: Number(bitsResult?.totalQuestions || 0),
+//       attempted: Number(bitsResult?.attempted || 0),
+//       correctAnswers: Number(bitsResult?.correctAnswers || 0),
+//       wrongAnswers: Number(bitsResult?.wrongAnswers || 0),
+//       unanswered: Number(bitsResult?.unanswered || 0),
+//       percentage: mcqPercentage,
+//     };
+
+//     // Set true for AI evaluation, false for default 5 marks per answer
+// const USE_AI_EVALUATION = false;
+
+// // ========================================================
+// // 5. INTERVIEW SCORE - AI OR DEFAULT EVALUATION
+// // ========================================================
+
+// const interviewSubmission = await Interview.findOne({
+//   where: { userId },
+//   order: [["createdAt", "DESC"]],
+// });
+
+// let interview = {
+//   totalQuestions: 0,
+//   score: 0,
+//   totalMarks: 0,
+//   percentage: 0,
+//   answers: [],
+// };
+
+// if (interviewSubmission) {
+//   const answers = Array.isArray(interviewSubmission.answers)
+//     ? interviewSubmission.answers
+//     : [];
+
+//   let scoredAnswers = [];
+
+//   if (USE_AI_EVALUATION) {
+//     // AI evaluates each candidate's answer out of 10
+//     scoredAnswers = await evaluateInterviewAnswers(answers);
+//   } else {
+//     // Default: assign 5 marks out of 10 per answer
+//     scoredAnswers = answers.map((answer) => ({
+//       ...answer,
+//       aiScore: 5,
+//       explanation: answer.explanation || "Default score assigned.",
+//     }));
+//   }
+
+//   // Calculate total score
+//   const totalScore = scoredAnswers.reduce(
+//     (sum, answer) => sum + answer.aiScore,
+//     0
+//   );
+
+//   const totalMarks = scoredAnswers.length * 10;
+
+//   const percentage =
+//     totalMarks > 0
+//       ? Number(((totalScore / totalMarks) * 100).toFixed(2))
+//       : 0;
+
+//   // Save scores and explanations in the database
+//   await interviewSubmission.update({
+//     answers: scoredAnswers,
+//   });
+
+//   interview = {
+//     totalQuestions: scoredAnswers.length,
+//     score: totalScore,
+//     totalMarks,
+//     percentage,
+//     answers: scoredAnswers,
+//   };
+// }
+
+
+// // const interviewSubmission = await Interview.findOne({
+// //   where: { userId },
+// //   order: [["createdAt", "DESC"]],
+// // });
+
+// // let interview = {
+// //   totalQuestions: 0,
+// //   score: 0,
+// //   totalMarks: 0,
+// //   percentage: 0,
+// //   answers: [],
+// // };
+
+// // if (interviewSubmission) {
+// //   // Send all candidate questions and answers to the AI.
+// //   const scoredAnswers = await evaluateInterviewAnswers(
+// //     interviewSubmission.answers
+// //   );
+
+// //   // Calculate total score.
+// //   const totalScore = scoredAnswers.reduce(
+// //     (sum, answer) => sum + answer.aiScore,
+// //     0
+// //   );
+
+// //   const totalMarks = scoredAnswers.length * 10;
+
+// //   const percentage =
+// //     totalMarks > 0
+// //       ? Number(((totalScore / totalMarks) * 100).toFixed(2))
+// //       : 0;
+
+// //   // Save AI scores and explanations to the database.
+// //   await interviewSubmission.update({
+// //     answers: scoredAnswers,
+// //   });
+
+// //   interview = {
+// //     totalQuestions: scoredAnswers.length,
+// //     score: totalScore,
+// //     totalMarks,
+// //     percentage,
+// //     answers: scoredAnswers,
+// //   };
+// // }
+
+//     // ========================================================
+//     // 6. SECURITY INFORMATION
+//     // ========================================================
+
+//     const violations = bitsResult?.violations || {};
+
+//     const security = {
+//       tabSwitches: Number(violations.tabSwitches || 0),
+//       fullscreenExits: Number(violations.fullscreenExits || 0),
+//       isBlurred: Boolean(violations.isBlurred),
+//       isOffline: Boolean(violations.isOffline),
+//     };
+
+//     // ========================================================
+//     // 7. OVERALL SCORE
+//     // Coding   = 40%
+//     // BITS     = 30%
+//     // Interview = 30%
+//     // ========================================================
+
+//     const overallPercentage = Number(
+//       (
+//         codingPercentage * 0.4 +
+//         mcqPercentage * 0.3 +
+//         interview.percentage * 0.3
+//       ).toFixed(2)
+//     );
+
+//     // ========================================================
+//     // 8. CANDIDATE NAME
+//     // ========================================================
+
+//     const candidateName =
+//       codingResult?.candidate ||
+//       bitsResult?.candidate ||
+//       "Unknown Candidate";
+
+//     // ========================================================
+//     // 9. BUILD FINAL RESULT
+//     // ========================================================
+
+//     const finalResult = {
+//       userId,
+//       candidateName,
+//       coding,
+//       mcq,
+//       interview,
+//       security,
+//       overallPercentage,
+//       overallScore: overallPercentage,
+//       resultStatus: "COMPLETED",
+//       evaluatedAt: new Date(),
+//     };
+
+//     // ========================================================
+//     // 10. CREATE OR UPDATE RESULT
+//     // ========================================================
+
+//     let savedResult;
+
+//     if (existingResult) {
+//       await existingResult.update(finalResult);
+//       savedResult = existingResult;
+//     } else {
+//       savedResult = await CandidateResult.create(finalResult);
+//     }
+
+//     // ========================================================
+//     // 11. RESPONSE
+//     // ========================================================
+
+//     return res.status(200).json({
+//       success: true,
+//       alreadyEvaluated: false,
+//       message: "Final candidate result generated successfully.",
+//       result: savedResult,
+//     });
+//   } catch (error) {
+//     console.error("Final result generation error:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to generate candidate final result.",
+//       error: error.message,
+//     });
+//   }
+// };
+
 
 const generateCandidateResult = async (req, res) => {
   try {
@@ -1135,7 +1420,7 @@ const generateCandidateResult = async (req, res) => {
     }
 
     // ========================================================
-    // 2. VALIDATE CODING AND BITS SUBMISSIONS
+    // 2. VALIDATE CODING AND MCQ SUBMISSIONS
     // ========================================================
 
     let codingResult = null;
@@ -1144,20 +1429,20 @@ const generateCandidateResult = async (req, res) => {
     try {
       codingResult = await validateCoding(userId);
     } catch (error) {
-      console.log("Coding validation skipped:", error.message);
+      console.log("Coding validation failed:", error.message);
     }
 
     try {
       bitsResult = await validateBits(userId);
     } catch (error) {
-      console.log("BITS validation skipped:", error.message);
+      console.log("MCQ validation failed:", error.message);
     }
 
     if (!codingResult && !bitsResult) {
       return res.status(400).json({
         success: false,
         message:
-          "Evaluation cannot proceed because both Coding and BITS submissions are unavailable.",
+          "Evaluation cannot proceed because both Coding and MCQ submissions are unavailable.",
       });
     }
 
@@ -1168,9 +1453,9 @@ const generateCandidateResult = async (req, res) => {
     const coding = (codingResult?.questions || []).map((question) => ({
       questionId: question.questionId,
       title: question.title,
-      totalTests: question.total,
-      passedTests: question.passed,
-      failedTests: question.failed,
+      totalTests: Number(question.total || 0),
+      passedTests: Number(question.passed || 0),
+      failedTests: Number(question.failed || 0),
       percentage: Number(question.percentage || 0),
     }));
 
@@ -1179,7 +1464,7 @@ const generateCandidateResult = async (req, res) => {
     );
 
     // ========================================================
-    // 4. MCQ / BITS RESULTS
+    // 4. MULTIPLE CHOICE QUESTION RESULTS
     // ========================================================
 
     const mcqPercentage = Number(bitsResult?.percentage || 0);
@@ -1193,121 +1478,8 @@ const generateCandidateResult = async (req, res) => {
       percentage: mcqPercentage,
     };
 
-    // Set true for AI evaluation, false for default 5 marks per answer
-const USE_AI_EVALUATION = false;
-
-// ========================================================
-// 5. INTERVIEW SCORE - AI OR DEFAULT EVALUATION
-// ========================================================
-
-const interviewSubmission = await Interview.findOne({
-  where: { userId },
-  order: [["createdAt", "DESC"]],
-});
-
-let interview = {
-  totalQuestions: 0,
-  score: 0,
-  totalMarks: 0,
-  percentage: 0,
-  answers: [],
-};
-
-if (interviewSubmission) {
-  const answers = Array.isArray(interviewSubmission.answers)
-    ? interviewSubmission.answers
-    : [];
-
-  let scoredAnswers = [];
-
-  if (USE_AI_EVALUATION) {
-    // AI evaluates each candidate's answer out of 10
-    scoredAnswers = await evaluateInterviewAnswers(answers);
-  } else {
-    // Default: assign 5 marks out of 10 per answer
-    scoredAnswers = answers.map((answer) => ({
-      ...answer,
-      aiScore: 5,
-      explanation: answer.explanation || "Default score assigned.",
-    }));
-  }
-
-  // Calculate total score
-  const totalScore = scoredAnswers.reduce(
-    (sum, answer) => sum + answer.aiScore,
-    0
-  );
-
-  const totalMarks = scoredAnswers.length * 10;
-
-  const percentage =
-    totalMarks > 0
-      ? Number(((totalScore / totalMarks) * 100).toFixed(2))
-      : 0;
-
-  // Save scores and explanations in the database
-  await interviewSubmission.update({
-    answers: scoredAnswers,
-  });
-
-  interview = {
-    totalQuestions: scoredAnswers.length,
-    score: totalScore,
-    totalMarks,
-    percentage,
-    answers: scoredAnswers,
-  };
-}
-
-
-// const interviewSubmission = await Interview.findOne({
-//   where: { userId },
-//   order: [["createdAt", "DESC"]],
-// });
-
-// let interview = {
-//   totalQuestions: 0,
-//   score: 0,
-//   totalMarks: 0,
-//   percentage: 0,
-//   answers: [],
-// };
-
-// if (interviewSubmission) {
-//   // Send all candidate questions and answers to the AI.
-//   const scoredAnswers = await evaluateInterviewAnswers(
-//     interviewSubmission.answers
-//   );
-
-//   // Calculate total score.
-//   const totalScore = scoredAnswers.reduce(
-//     (sum, answer) => sum + answer.aiScore,
-//     0
-//   );
-
-//   const totalMarks = scoredAnswers.length * 10;
-
-//   const percentage =
-//     totalMarks > 0
-//       ? Number(((totalScore / totalMarks) * 100).toFixed(2))
-//       : 0;
-
-//   // Save AI scores and explanations to the database.
-//   await interviewSubmission.update({
-//     answers: scoredAnswers,
-//   });
-
-//   interview = {
-//     totalQuestions: scoredAnswers.length,
-//     score: totalScore,
-//     totalMarks,
-//     percentage,
-//     answers: scoredAnswers,
-//   };
-// }
-
     // ========================================================
-    // 6. SECURITY INFORMATION
+    // 5. SECURITY INFORMATION
     // ========================================================
 
     const violations = bitsResult?.violations || {};
@@ -1320,22 +1492,44 @@ if (interviewSubmission) {
     };
 
     // ========================================================
-    // 7. OVERALL SCORE
-    // Coding   = 40%
-    // BITS     = 30%
-    // Interview = 30%
+    // 6. OVERALL SCORE
+    // Coding = 40%
+    // MCQ    = 60%
     // ========================================================
 
     const overallPercentage = Number(
       (
         codingPercentage * 0.4 +
-        mcqPercentage * 0.3 +
-        interview.percentage * 0.3
+        mcqPercentage * 0.6
       ).toFixed(2)
     );
 
+    const PASSING_PERCENTAGE = 15;
+
+    const bitsExamStatus =
+      mcqPercentage >= PASSING_PERCENTAGE ? "Passed" : "Failed";
+
+    const codingExamStatus =
+      codingPercentage >= PASSING_PERCENTAGE ? "Passed" : "Failed";
+
+    const status =
+        bitsExamStatus === "Passed" && codingExamStatus === "Passed"
+          ? "Eligible" : "Rejected";
+
+    const candidate = await Candidate.findByPk(userId);
+
+    if (!candidate) {
+      console.log(`Candidate not found for ID: ${userId}`);
+    } else {
+      await candidate.update({
+        bitsExamStatus,
+        codingExamStatus,
+        status
+      });
+    }
+
     // ========================================================
-    // 8. CANDIDATE NAME
+    // 7. CANDIDATE NAME
     // ========================================================
 
     const candidateName =
@@ -1344,7 +1538,7 @@ if (interviewSubmission) {
       "Unknown Candidate";
 
     // ========================================================
-    // 9. BUILD FINAL RESULT
+    // 8. BUILD FINAL RESULT
     // ========================================================
 
     const finalResult = {
@@ -1352,7 +1546,6 @@ if (interviewSubmission) {
       candidateName,
       coding,
       mcq,
-      interview,
       security,
       overallPercentage,
       overallScore: overallPercentage,
@@ -1361,7 +1554,7 @@ if (interviewSubmission) {
     };
 
     // ========================================================
-    // 10. CREATE OR UPDATE RESULT
+    // 9. CREATE OR UPDATE RESULT
     // ========================================================
 
     let savedResult;
@@ -1374,13 +1567,14 @@ if (interviewSubmission) {
     }
 
     // ========================================================
-    // 11. RESPONSE
+    // 10. RESPONSE
     // ========================================================
 
     return res.status(200).json({
       success: true,
       alreadyEvaluated: false,
-      message: "Final candidate result generated successfully.",
+      message:
+        "Final candidate result generated successfully.",
       result: savedResult,
     });
   } catch (error) {
@@ -1393,6 +1587,7 @@ if (interviewSubmission) {
     });
   }
 };
+
 
 const getCandidateResult = async (req, res) => {
   try {
@@ -1597,11 +1792,289 @@ const generateAndSaveInterviewQuestions = async (req, res) => {
   }
 };
 
+const updateCandidateSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { examDate, examTime, isRandomSchedule } = req.body;
+
+
+    if (!examDate || !examTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Exam date and time are required",
+      });
+    }
+
+    const candidate = await Candidate.findByPk(id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    await candidate.update({
+  examDate,
+  examTime,
+  isRandomSchedule,
+});
+
+    return res.status(200).json({
+      success: true,
+      message: "Candidate schedule updated successfully",
+      candidate: candidate.toJSON(),
+    });
+  } catch (error) {
+    console.error("Schedule update error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update candidate schedule",
+    });
+  }
+};
+
+const assignCandidateQuestions = async (req, res) => {
+  try {
+    const {
+      candidate_id,
+      coding_question_ids,
+      bits_question_ids,
+    } = req.body;
+
+    // Validate required fields
+    if (!candidate_id) {
+      return res.status(400).json({
+        success: false,
+        message: "candidate_id is required.",
+      });
+    }
+
+    if (
+      !Array.isArray(coding_question_ids) ||
+      !Array.isArray(bits_question_ids)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "coding_question_ids and bits_question_ids must be arrays.",
+      });
+    }
+
+    // Enforce selection limits
+    if (coding_question_ids.length > 3) {
+      return res.status(400).json({
+        success: false,
+        message: "You can assign a maximum of 3 coding questions.",
+      });
+    }
+
+    if (bits_question_ids.length > 15) {
+      return res.status(400).json({
+        success: false,
+        message: "You can assign a maximum of 15 MCQs.",
+      });
+    }
+
+    // Require at least one question of each type
+    if (
+      coding_question_ids.length === 0 ||
+      bits_question_ids.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Assign at least 1 coding question and 1 MCQ.",
+      });
+    }
+
+    // Find candidate by primary key or candidateId
+    const candidate = await Candidate.findByPk(candidate_id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found.",
+      });
+    }
+
+    // Save question IDs in the Candidate table
+    await candidate.update({
+      coding_question_ids,
+      bits_question_ids,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Questions assigned successfully.",
+      data: {
+        candidateId: candidate.candidateId,
+        coding_question_ids: candidate.coding_question_ids,
+        bits_question_ids: candidate.bits_question_ids,
+      },
+    });
+  } catch (error) {
+    console.error("Assign candidate questions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to assign questions.",
+      error: error.message,
+    });
+  }
+};
+
+const getDashboard = async (req, res) => {
+  try {
+    const now = new Date();
+
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+    
+
+    const [
+  candidates,
+  employeeCount,
+  totalCandidates,
+  mappedInterviews,
+  todayInterviewCount,
+  passedPassedPendingCount,
+] = await Promise.all([
+  Candidate.findAll({
+    attributes: { exclude: ["password"] },
+    order: [["id", "ASC"]],
+  }),
+
+  Employee.count(),
+
+  Candidate.count(),
+
+  Candidate.count({
+    where: {
+      assignedEmployeeId: {
+        [Op.not]: null,
+        [Op.ne]: "",
+      },
+    },
+  }),
+
+  Candidate.count({
+    where: {
+      examDate: today,
+      interviewStatus: {
+        [Op.in]: ["Pending", "Scheduled"],
+      },
+    },
+  }),
+
+  Candidate.count({
+    where: {
+      bitsExamStatus: "Passed",
+      codingExamStatus: "Passed",
+      interviewStatus: "Pending",
+    },
+  }),
+]);
+
+  return res.status(200).json({
+  success: true,
+  message: "Dashboard data fetched successfully",
+  employeeCount,
+  totalCandidates,
+  mappedInterviews,
+  todayInterviewCount,
+  passedPassedPendingCount,
+
+  stats: {
+    employeeCount,
+    totalCandidates,
+    mappedInterviews,
+    todayInterviewCount,
+    passedPassedPendingCount,
+  },
+
+  candidates,
+});
+  } catch (error) {
+    console.error("Dashboard error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard data",
+      error: error.message,
+    });
+  }
+};
+
+const getAssignedQuestions = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+
+    const candidate = await Candidate.findOne({
+      where: {
+        [Op.or]: [
+          { id: candidateId },
+          { candidateId: candidateId },
+        ],
+      },
+    });
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    const codingIds = Array.isArray(candidate.coding_question_ids)
+      ? candidate.coding_question_ids
+      : [];
+
+    const mcqIds = Array.isArray(candidate.bits_question_ids)
+      ? candidate.bits_question_ids
+      : [];
+
+    const [codingQuestions, mcqQuestions] = await Promise.all([
+      codingIds.length
+        ? Question.findAll({
+            where: { id: { [Op.in]: codingIds } },
+          })
+        : [],
+
+      mcqIds.length
+        ? MCQQuestion.findAll({
+            where: { id: { [Op.in]: mcqIds } },
+          })
+        : [],
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        codingQuestions,
+        mcqQuestions,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to get assigned questions:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch assigned questions",
+    });
+  }
+};
+
 module.exports = {
     addEmployee,addCandidate,viewCandidate,viewEmployee,createQuestion,
     getAllQuestions,getQuestionById,createMcqQuestion,getAllMcqQuestions,
     getMcqQuestionById,getAssessmentsByUserId,getBitsAssessmentsByUserId,
     updateMCQ,updateQuestion,getInterviewByUserId,viewInterviewEligibleCandidates,
     scheduleInterview,validateCandidate,validateCandidateCoding,generateCandidateResult,
-    getCandidateResult,addInterviewQuestion,getAllInterviewQuestions,generateAndSaveInterviewQuestions
+    getCandidateResult,addInterviewQuestion,getAllInterviewQuestions,generateAndSaveInterviewQuestions,updateCandidateSchedule,
+    assignCandidateQuestions , getDashboard , getAssignedQuestions
 };
