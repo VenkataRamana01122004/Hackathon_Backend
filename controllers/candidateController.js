@@ -175,59 +175,134 @@ const getQuestions = async (req, res) => {
       questions = assignedIds
         .map((id) => questionsById.get(Number(id)))
         .filter(Boolean);
-    } else {
-      // Existing random selection: one Easy, one Medium, one Hard
-      const [easyQuestion, mediumQuestion, hardQuestion] =
-        await Promise.all([
-          Question.findOne({
-            where: {
-              difficulty: "Easy",
-              isActive: true,
-            },
-            order: Sequelize.literal("RAND()"),
-          }),
+    } 
+    
+    else {
+  const isHigherGrade = [10, 11, 12, 13].includes(Number(candidate.grade));
 
-          Question.findOne({
-            where: {
-              difficulty: "Medium",
-              isActive: true,
-            },
-            order: Sequelize.literal("RAND()"),
-          }),
+  let questionPromises;
 
-          Question.findOne({
-            where: {
-              difficulty: "Hard",
-              isActive: true,
-            },
-            order: Sequelize.literal("RAND()"),
-          }),
-        ]);
+  if (isHigherGrade) {
+    // Grades 11, 12, 13: two Medium and one Hard
+    questionPromises = [
+      Question.findOne({
+        where: {
+          difficulty: "Medium",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
 
-      questions = [
-        easyQuestion,
-        mediumQuestion,
-        hardQuestion,
-      ].filter(Boolean);
+      Question.findOne({
+        where: {
+          difficulty: "Medium",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
 
-      // Shuffle the returned questions
-      for (let i = questions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [questions[i], questions[j]] = [
-          questions[j],
-          questions[i],
-        ];
-      }
-    }
+      Question.findOne({
+        where: {
+          difficulty: "Hard",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
+    ];
+  } else {
+    // Other grades: one Easy, one Medium, and one Hard
+    questionPromises = [
+      Question.findOne({
+        where: {
+          difficulty: "Easy",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
 
-    // Optional 2-second delay, retained from your original code
+      Question.findOne({
+        where: {
+          difficulty: "Medium",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
+
+      Question.findOne({
+        where: {
+          difficulty: "Hard",
+          isActive: true,
+        },
+        order: Sequelize.literal("RAND()"),
+      }),
+    ];
+  }
+
+  questions = (await Promise.all(questionPromises)).filter(Boolean);
+
+  // Shuffle the returned questions
+  for (let i = questions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [questions[i], questions[j]] = [
+      questions[j],
+      questions[i],
+    ];
+  }
+}
+
+    // else {
+    //   // Existing random selection: one Easy, one Medium, one Hard
+    //   const [easyQuestion, mediumQuestion, hardQuestion] =
+    //     await Promise.all([
+    //       Question.findOne({
+    //         where: {
+    //           difficulty: "Easy",
+    //           isActive: true,
+    //         },
+    //         order: Sequelize.literal("RAND()"),
+    //       }),
+
+    //       Question.findOne({
+    //         where: {
+    //           difficulty: "Medium",
+    //           isActive: true,
+    //         },
+    //         order: Sequelize.literal("RAND()"),
+    //       }),
+
+    //       Question.findOne({
+    //         where: {
+    //           difficulty: "Hard",
+    //           isActive: true,
+    //         },
+    //         order: Sequelize.literal("RAND()"),
+    //       }),
+    //     ]);
+
+    //   questions = [
+    //     easyQuestion,
+    //     mediumQuestion,
+    //     hardQuestion,
+    //   ].filter(Boolean);
+
+    //   // Shuffle the returned questions
+    //   for (let i = questions.length - 1; i > 0; i--) {
+    //     const j = Math.floor(Math.random() * (i + 1));
+    //     [questions[i], questions[j]] = [
+    //       questions[j],
+    //       questions[i],
+    //     ];
+    //   }
+    // }
+
+    
     setTimeout(() => {
       return res.status(200).json({
         success: true,
         count: questions.length,
         data: questions,
       });
-    }, 2000);
+    }, 1000);
   } catch (error) {
     console.error("Error fetching coding questions:", error);
 

@@ -34,6 +34,9 @@ const Candidate = sequelize.define(
       type: DataTypes.STRING(255),
       allowNull: false,
     },
+    grade: {
+      type: DataTypes.INTEGER
+    },
 
     phone: {
       type: DataTypes.STRING(15),
