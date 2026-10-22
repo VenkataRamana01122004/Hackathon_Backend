@@ -30,6 +30,7 @@ const addCandidate = async (req, res) => {
       email: req.body.email,
       password: req.body.password,
       phone: req.body.phone,
+      grade: req.body.grade,
       gender: req.body.gender,
       dob: req.body.dob,
       qualification: req.body.qualification,
