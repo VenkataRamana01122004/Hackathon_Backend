@@ -488,9 +488,10 @@ return res.status(200).json({
 
 exports.generateQuestions = async (req, res) => {
   try {
-    const { topic,category, count,questionType } = req.body;
+    const { topic,category, count,questionType,difficulty } = req.body;
 
-    const questions = await generateMCQs(topic,category, count, questionType);
+    const questions = await generateMCQs(topic,category, count, questionType,difficulty);
+    // console.log(difficulty);
 
     const savedQuestions = await MCQQuestion.bulkCreate(questions);
 

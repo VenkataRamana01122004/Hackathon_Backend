@@ -68,52 +68,39 @@ function parseCodingQuestions(content) {
 }
 
 
-async function generateMCQs(topic,category,count,questionType) {
+async function generateMCQs(topic, category, count, questionType, difficulty) {
+  const requestedCount = Number(count);
+  let content = "";
+  let lastError = null;
+
   // ============================================================
   // INPUT VALIDATION
   // ============================================================
 
-  const requestedCount = Number(count);
-  // console.log(questionType);
-
-  if (
-    !Number.isInteger(requestedCount) ||
-    requestedCount <= 0
-  ) {
-    throw new Error(
-      "count must be a positive integer"
-    );
+  if (!Number.isInteger(requestedCount) || requestedCount <= 0) {
+    throw new Error("count must be a positive integer");
   }
 
-  if (
-    !topic ||
-    typeof topic !== "string" ||
-    !topic.trim()
-  ) {
-    throw new Error(
-      "topic must be a non-empty string"
-    );
+  if (typeof topic !== "string" || !topic.trim()) {
+    throw new Error("topic must be a non-empty string");
   }
 
-  if (
-    !category ||
-    typeof category !== "string" ||
-    !category.trim()
-  ) {
-    throw new Error(
-      "category must be a non-empty string"
-    );
+  if (typeof category !== "string" || !category.trim()) {
+    throw new Error("category must be a non-empty string");
   }
 
-  if (
-    !["SINGLE", "MULTIPLE", "BOTH"].includes(
-      questionType
-    )
-  ) {
+  if (!["SINGLE", "MULTIPLE", "BOTH"].includes(questionType)) {
     throw new Error(
       'questionType must be "SINGLE", "MULTIPLE", or "BOTH"'
     );
   }
+
+  if (!["Easy", "Medium", "Hard"].includes(difficulty)) {
+    throw new Error('difficulty must be "Easy", "Medium", or "Hard"');
+  }
+
+  topic = topic.trim();
+  category = category.trim();
 
   // ============================================================
   // QUESTION TYPE RULES
@@ -123,40 +110,61 @@ async function generateMCQs(topic,category,count,questionType) {
 
   if (questionType === "SINGLE") {
     typeRules = `
-- ALL questions MUST have questionType = "SINGLE".
-- Each question MUST have exactly ONE correct answer.
-- correctAnswers MUST contain exactly ONE option.
-- Do NOT generate MULTIPLE questions.
+- Every questionType must be "SINGLE".
+- Each question must have exactly ONE correct answer.
+- Do not generate MULTIPLE questions.
+`;
+  } else if (questionType === "MULTIPLE") {
+    typeRules = `
+- Every questionType must be "MULTIPLE".
+- Each question must have TWO or THREE correct answers.
+- Every question must clearly instruct the candidate to select
+  multiple answers.
+- Do not generate SINGLE questions.
+`;
+  } else {
+    typeRules = `
+- Use only "SINGLE" and "MULTIPLE" as questionType values.
+- SINGLE questions must have exactly ONE correct answer.
+- MULTIPLE questions must have TWO or THREE correct answers.
+- MULTIPLE questions must clearly instruct the candidate to
+  select multiple answers.
+- For count 1, either type is allowed.
+- For count 2, generate one SINGLE and one MULTIPLE.
+- For count greater than 2, distribute the types as evenly as possible.
 `;
   }
 
-  if (questionType === "MULTIPLE") {
-    typeRules = `
-- ALL questions MUST have questionType = "MULTIPLE".
-- Each question MUST have TWO or THREE correct answers.
-- correctAnswers MUST contain TWO or THREE options.
-- Every MULTIPLE question MUST clearly tell the user to select multiple answers.
-- Do NOT generate SINGLE questions.
+  // ============================================================
+  // DIFFICULTY RULES
+  // ============================================================
+
+  let difficultyRules = "";
+
+  if (difficulty === "Easy") {
+    difficultyRules = `
+- Test fundamental knowledge and basic understanding.
+- Use straightforward questions and familiar concepts.
+- Avoid advanced edge cases and complex multi-step reasoning.
 `;
-  }
-
-  if (questionType === "BOTH") {
-    typeRules = `
-- Generate both SINGLE and MULTIPLE questions.
-- Do NOT use "BOTH" as questionType.
-- questionType can ONLY be "SINGLE" or "MULTIPLE".
-
-SINGLE:
-- Exactly ONE correct answer.
-
-MULTIPLE:
-- TWO or THREE correct answers.
-- Must clearly indicate that multiple answers should be selected.
-
-Distribution:
-- If count = 1, either SINGLE or MULTIPLE is allowed.
-- If count = 2, generate exactly 1 SINGLE and 1 MULTIPLE.
-- If count > 2, distribute SINGLE and MULTIPLE as evenly as possible.
+  } else if (difficulty === "Medium") {
+    difficultyRules = `
+- Test practical application and conceptual understanding.
+- Include moderate reasoning, code interpretation, or debugging.
+- Require more than simple memorization where appropriate.
+`;
+  } else {
+    difficultyRules = `
+- EVERY question must genuinely be HARD.
+- Test advanced concepts, edge cases, code analysis, debugging,
+  interactions between concepts, and multi-step reasoning.
+- For programming topics, use realistic code snippets, subtle bugs,
+  execution behavior, algorithmic reasoning, or advanced scenarios
+  where appropriate.
+- Distractors must be technically plausible and challenging.
+- Do not generate basic definition or simple memorization questions.
+- Do not make questions unnecessarily ambiguous or incorrect.
+- Keep questions and options concise enough to produce complete JSON.
 `;
   }
 
@@ -165,21 +173,12 @@ Distribution:
   // ============================================================
 
   const systemPrompt = `
-You are an expert MCQ question generator.
+You are an expert technical MCQ generator.
 
-Your entire response MUST be a valid JSON array.
+Return ONLY a valid JSON array. Do not use markdown, code fences,
+comments, or any text before or after the JSON.
 
-DO NOT:
-- use markdown
-- use code fences
-- add explanations
-- add comments
-- add text before the JSON
-- add text after the JSON
-
-Return ONLY the JSON array.
-
-Each question MUST have exactly this structure:
+Each array element MUST have exactly this structure:
 
 {
   "question": "Question text",
@@ -193,662 +192,405 @@ Each question MUST have exactly this structure:
   "correctAnswers": [
     "Option A"
   ],
-  "difficulty": "Easy or Medium or Hard",
-  "category": "${category}",
+  "difficulty": "${difficulty}",
+  "category": ${JSON.stringify(category)},
   "marks": 1,
   "negativeMarks": 0,
   "isActive": true
 }
 
-============================================================
-GENERAL RULES
-============================================================
+GENERAL RULES:
 
 1. Generate exactly ${requestedCount} questions.
+2. Every question must be unique.
+3. Every question must have exactly four unique options.
+4. Every option must be a non-empty string.
+5. correctAnswers must always be an array of strings.
+6. Every correct answer must exactly match one of the options.
+7. Do not include answers that are absent from the options.
+8. Every question's difficulty must be exactly "${difficulty}".
+9. Every question's category must be exactly ${JSON.stringify(category)}.
+10. marks must be the number 1.
+11. negativeMarks must be the number 0.
+12. isActive must be boolean true.
+13. Questions must be technically correct, unambiguous, and relevant
+    to the requested topic.
+14. Options must be plausible, distinct, and grammatically consistent.
+15. Avoid unnecessary "All of the above" and "None of the above".
+16. Do not include explanations or additional object properties.
+17. Escape double quotes and special characters correctly in JSON strings.
+18. Return the complete JSON array; never truncate or omit its closing brackets.
 
-2. Every question MUST be unique.
+DIFFICULTY REQUIREMENTS:
+${difficultyRules}
 
-3. Every question MUST have exactly 4 options.
-
-4. All 4 options MUST be unique.
-
-5. Every option MUST be a non-empty string.
-
-6. correctAnswers MUST always be an array.
-
-7. Every correct answer MUST exactly match one of the options.
-
-8. Do not add correct answers that are not present in options.
-
-9. difficulty MUST be exactly one of:
-   - "Easy"
-   - "Medium"
-   - "Hard"
-
-10. Mix Easy, Medium, and Hard questions when possible.
-
-11. category MUST exactly equal:
-    "${category}"
-
-12. marks MUST be exactly:
-    1
-
-13. negativeMarks MUST be exactly:
-    0
-
-14. isActive MUST be:
-    true
-
-15. Questions must be:
-    - technically accurate
-    - relevant to "${topic}"
-    - unambiguous
-    - suitable for an MCQ test
-
-16. Distractors must be plausible.
-
-17. Do not make the correct answer obvious because of:
-    - length
-    - formatting
-    - wording
-    - grammar
-
-18. Avoid duplicate questions.
-
-19. Avoid duplicate options.
-
-20. Avoid unnecessary "All of the above" and
-    "None of the above" options.
-
-============================================================
-QUESTION TYPE RULES
-============================================================
-
+QUESTION TYPE REQUIREMENTS:
 ${typeRules}
 
-============================================================
-MULTIPLE QUESTION WORDING
-============================================================
+For MULTIPLE questions, explicitly say "Select all that apply",
+"Select two answers", or equivalent in the question text.
 
-MULTIPLE questions MUST explicitly indicate multiple selection.
-
-Use wording such as:
-
-"Select all that apply."
-
-"Select two answers."
-
-"Select three answers."
-
-"Which of the following are correct? Select all that apply."
-
-Never create a MULTIPLE question without clearly
-telling the user to select multiple answers.
-
-============================================================
-FINAL REQUIREMENT
-============================================================
-
-Return exactly ${requestedCount} questions.
-
-Return ONLY the JSON array.
+Return exactly ${requestedCount} questions as a valid JSON array.
 `;
-
-  // ============================================================
-  // USER PROMPT
-  // ============================================================
 
   const userPrompt = `
-Generate exactly ${requestedCount} MCQs about:
+Generate exactly ${requestedCount} ${difficulty}-difficulty MCQs.
 
-"${topic}"
+Topic: ${JSON.stringify(topic)}
+Category: ${JSON.stringify(category)}
+Requested question type: ${questionType}
+Difficulty: ${difficulty}
 
-Category:
-"${category}"
-
-Requested question type:
-"${questionType}"
-
+${difficultyRules}
 ${typeRules}
 
-Return ONLY the JSON array.
+Return only the JSON array.
 `;
 
-  try {
-    // ============================================================
-    // GROQ REQUEST
-    // ============================================================
+  // ============================================================
+  // JSON PARSER
+  // ============================================================
 
-    const response =
-      await groq.chat.completions.create({
-        model,
-
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: userPrompt,
-          },
-        ],
-
-        temperature: 0.4,
-      });
-
-    // ============================================================
-    // GET RESPONSE
-    // ============================================================
-
-    const content =
-      response?.choices?.[0]?.message?.content;
-
-    if (
-      !content ||
-      typeof content !== "string"
-    ) {
-      throw new Error(
-        "Groq returned an empty response"
-      );
+  function parseMCQResponse(rawContent) {
+    if (typeof rawContent !== "string" || !rawContent.trim()) {
+      throw new Error("The model returned an empty response");
     }
 
-    console.log(
-      "========================================"
-    );
+    let cleaned = rawContent
+      .replace(/^\uFEFF/, "")
+      .trim();
 
-    console.log("MCQ raw response:");
-
-    console.log(content);
-
-    console.log(
-      "========================================"
-    );
-
-    // ============================================================
-    // PARSE JSON
-    // ============================================================
-
-    let result;
+    // Remove optional markdown fences.
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
 
     try {
-      result = JSON.parse(content);
-    } catch (parseError) {
-      console.error(
-        "JSON parsing failed:"
-      );
+      return JSON.parse(cleaned);
+    } catch (firstError) {
+      // Attempt to extract a complete JSON array if extra text exists.
+      const start = cleaned.indexOf("[");
+      const end = cleaned.lastIndexOf("]");
 
-      console.error(
-        parseError.message
-      );
+      if (start !== -1 && end > start) {
+        const candidate = cleaned.slice(start, end + 1);
 
-      console.error(
-        "Raw response:"
-      );
-
-      console.error(content);
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          // Preserve the original parsing error below.
+        }
+      }
 
       throw new Error(
-        `Invalid JSON: ${parseError.message}`
+        `Invalid JSON: ${firstError.message}. ` +
+        "The response may be truncated or incorrectly escaped."
       );
     }
+  }
 
-    // ============================================================
-    // ARRAY VALIDATION
-    // ============================================================
+  // ============================================================
+  // VALIDATE GENERATED QUESTIONS
+  // ============================================================
 
+  function validateMCQs(result) {
     if (!Array.isArray(result)) {
-      throw new Error(
-        "Expected JSON array"
-      );
+      throw new Error("Expected a JSON array of questions");
     }
 
-    // ============================================================
-    // COUNT VALIDATION
-    // ============================================================
-
-    if (
-      result.length !== requestedCount
-    ) {
+    if (result.length !== requestedCount) {
       throw new Error(
         `Expected ${requestedCount} questions but received ${result.length}`
       );
     }
 
-    // ============================================================
-    // TRACK DUPLICATE QUESTIONS
-    // ============================================================
-
     const questionSet = new Set();
 
-    // ============================================================
-    // VALIDATE EACH QUESTION
-    // ============================================================
+    for (const [index, q] of result.entries()) {
+      const number = index + 1;
 
-    for (
-      const [index, q]
-      of result.entries()
-    ) {
-      const questionNumber =
-        index + 1;
-
-      // ----------------------------------------------------------
-      // OBJECT VALIDATION
-      // ----------------------------------------------------------
-
-      if (
-        !q ||
-        typeof q !== "object" ||
-        Array.isArray(q)
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Must be an object`
-        );
+      if (!q || typeof q !== "object" || Array.isArray(q)) {
+        throw new Error(`Question ${number}: Must be an object`);
       }
 
-      // ----------------------------------------------------------
-      // QUESTION TEXT
-      // ----------------------------------------------------------
-
-      if (
-        typeof q.question !== "string" ||
-        !q.question.trim()
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Question text is missing`
-        );
+      if (typeof q.question !== "string" || !q.question.trim()) {
+        throw new Error(`Question ${number}: Question text is missing`);
       }
 
-      q.question =
-        q.question.trim();
+      q.question = q.question.trim();
 
-      // ----------------------------------------------------------
-      // DUPLICATE QUESTION
-      // ----------------------------------------------------------
+      const normalizedQuestion = q.question
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
 
-      const normalizedQuestion =
-        q.question
-          .toLowerCase()
-          .replace(/\s+/g, " ")
-          .trim();
-
-      if (
-        questionSet.has(
-          normalizedQuestion
-        )
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Duplicate question`
-        );
+      if (questionSet.has(normalizedQuestion)) {
+        throw new Error(`Question ${number}: Duplicate question`);
       }
 
-      questionSet.add(
-        normalizedQuestion
-      );
+      questionSet.add(normalizedQuestion);
 
-      // ----------------------------------------------------------
-      // QUESTION TYPE
-      // ----------------------------------------------------------
-
-      if (
-        ![
-          "SINGLE",
-          "MULTIPLE",
-        ].includes(
-          q.questionType
-        )
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Invalid questionType`
-        );
+      if (!["SINGLE", "MULTIPLE"].includes(q.questionType)) {
+        throw new Error(`Question ${number}: Invalid questionType`);
       }
-
-      // ----------------------------------------------------------
-      // REQUESTED TYPE
-      // ----------------------------------------------------------
 
       if (
         questionType !== "BOTH" &&
-        q.questionType !==
-          questionType
+        q.questionType !== questionType
       ) {
         throw new Error(
-          `Question ${questionNumber}: Expected ${questionType}, received ${q.questionType}`
+          `Question ${number}: Expected ${questionType}, received ${q.questionType}`
         );
       }
 
-      // ----------------------------------------------------------
-      // OPTIONS
-      // ----------------------------------------------------------
-
-      if (
-        !Array.isArray(q.options)
-      ) {
+      if (!Array.isArray(q.options) || q.options.length !== 4) {
         throw new Error(
-          `Question ${questionNumber}: options must be an array`
+          `Question ${number}: Must contain exactly four options`
         );
       }
 
       if (
-        q.options.length !== 4
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Must contain exactly 4 options`
-        );
-      }
-
-      // Check every option
-      for (
-        const option
-        of q.options
-      ) {
-        if (
-          typeof option !==
-            "string" ||
-          !option.trim()
-        ) {
-          throw new Error(
-            `Question ${questionNumber}: Every option must be a non-empty string`
-          );
-        }
-      }
-
-      // Trim options
-      q.options =
-        q.options.map(
-          (option) =>
-            option.trim()
-        );
-
-      // Check duplicate options
-      const optionSet =
-        new Set(
-          q.options.map(
-            (option) =>
-              option.toLowerCase()
-          )
-        );
-
-      if (
-        optionSet.size !== 4
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: Options must be unique`
-        );
-      }
-
-      // ----------------------------------------------------------
-      // CORRECT ANSWERS
-      // ----------------------------------------------------------
-
-      if (
-        !Array.isArray(
-          q.correctAnswers
+        q.options.some(
+          option => typeof option !== "string" || !option.trim()
         )
       ) {
         throw new Error(
-          `Question ${questionNumber}: correctAnswers must be an array`
+          `Question ${number}: Every option must be a non-empty string`
         );
       }
 
-      // Trim correct answers
-      q.correctAnswers =
-        q.correctAnswers.map(
-          (answer) => {
-            if (
-              typeof answer !==
-                "string" ||
-              !answer.trim()
-            ) {
-              throw new Error(
-                `Question ${questionNumber}: Every correct answer must be a non-empty string`
-              );
-            }
+      q.options = q.options.map(option => option.trim());
 
-            return answer.trim();
-          }
-        );
+      const optionSet = new Set(
+        q.options.map(option => option.toLowerCase())
+      );
 
-      // ----------------------------------------------------------
-      // SINGLE VALIDATION
-      // ----------------------------------------------------------
-
-      if (
-        q.questionType ===
-        "SINGLE"
-      ) {
-        if (
-          q.correctAnswers
-            .length !== 1
-        ) {
-          throw new Error(
-            `Question ${questionNumber}: SINGLE must have exactly 1 correct answer`
-          );
-        }
+      if (optionSet.size !== 4) {
+        throw new Error(`Question ${number}: Options must be unique`);
       }
 
-      // ----------------------------------------------------------
-      // MULTIPLE VALIDATION
-      // ----------------------------------------------------------
-
       if (
-        q.questionType ===
-        "MULTIPLE"
+        !Array.isArray(q.correctAnswers) ||
+        q.correctAnswers.length === 0
       ) {
-        if (
-          q.correctAnswers
-            .length < 2 ||
-          q.correctAnswers
-            .length > 3
-        ) {
+        throw new Error(
+          `Question ${number}: correctAnswers must be a non-empty array`
+        );
+      }
+
+      q.correctAnswers = q.correctAnswers.map(answer => {
+        if (typeof answer !== "string" || !answer.trim()) {
           throw new Error(
-            `Question ${questionNumber}: MULTIPLE must have 2 or 3 correct answers`
+            `Question ${number}: Invalid correct answer`
           );
         }
 
-        // Make sure the question explicitly
-        // indicates multiple selection.
+        return answer.trim();
+      });
+
+      if (q.questionType === "SINGLE" && q.correctAnswers.length !== 1) {
+        throw new Error(
+          `Question ${number}: SINGLE must have exactly one correct answer`
+        );
+      }
+
+      if (
+        q.questionType === "MULTIPLE" &&
+        (q.correctAnswers.length < 2 || q.correctAnswers.length > 3)
+      ) {
+        throw new Error(
+          `Question ${number}: MULTIPLE must have two or three correct answers`
+        );
+      }
+
+      if (q.questionType === "MULTIPLE") {
         const multiplePattern =
-          /select all that apply|select all|select two|select three|choose all|choose two|choose three|multiple answers|which of the following.*(are|apply|correct|true).*(select|choose|multiple|all)/i;
+          /select all|select two|select three|choose all|choose two|choose three|multiple answers/i;
 
-        if (
-          !multiplePattern.test(
-            q.question
-          )
-        ) {
+        if (!multiplePattern.test(q.question)) {
           throw new Error(
-            `Question ${questionNumber}: MULTIPLE question must clearly indicate multiple selections`
+            `Question ${number}: MULTIPLE must instruct the candidate to select multiple answers`
           );
         }
       }
 
-      // ----------------------------------------------------------
-      // DUPLICATE CORRECT ANSWERS
-      // ----------------------------------------------------------
+      const correctSet = new Set(
+        q.correctAnswers.map(answer => answer.toLowerCase())
+      );
 
-      const correctAnswerSet =
-        new Set(
-          q.correctAnswers.map(
-            (answer) =>
-              answer.toLowerCase()
-          )
-        );
-
-      if (
-        correctAnswerSet.size !==
-        q.correctAnswers.length
-      ) {
+      if (correctSet.size !== q.correctAnswers.length) {
         throw new Error(
-          `Question ${questionNumber}: Duplicate correct answers`
+          `Question ${number}: Duplicate correct answers`
         );
       }
 
-      // ----------------------------------------------------------
-      // CORRECT ANSWERS MUST EXIST IN OPTIONS
-      // ----------------------------------------------------------
-
-      for (
-        const answer
-        of q.correctAnswers
-      ) {
-        if (
-          !q.options.includes(
-            answer
-          )
-        ) {
+      for (const answer of q.correctAnswers) {
+        if (!q.options.includes(answer)) {
           throw new Error(
-            `Question ${questionNumber}: Correct answer "${answer}" does not exist in options`
+            `Question ${number}: Correct answer "${answer}" does not match an option exactly`
           );
         }
       }
 
-      // ----------------------------------------------------------
-      // DIFFICULTY
-      // ----------------------------------------------------------
-
-      if (
-        ![
-          "Easy",
-          "Medium",
-          "Hard",
-        ].includes(
-          q.difficulty
-        )
-      ) {
+      if (q.difficulty !== difficulty) {
         throw new Error(
-          `Question ${questionNumber}: Invalid difficulty`
+          `Question ${number}: Expected difficulty "${difficulty}", received "${q.difficulty}"`
         );
       }
 
-      // ----------------------------------------------------------
-      // CATEGORY
-      // ----------------------------------------------------------
-
-      if (
-        q.category !==
-        category
-      ) {
+      if (q.category !== category) {
         throw new Error(
-          `Question ${questionNumber}: Invalid category`
+          `Question ${number}: Expected category "${category}"`
         );
       }
 
-      // ----------------------------------------------------------
-      // MARKS
-      // ----------------------------------------------------------
-
-      if (
-        q.marks !== 1
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: marks must be 1`
-        );
+      if (q.marks !== 1) {
+        throw new Error(`Question ${number}: marks must be 1`);
       }
 
-      // ----------------------------------------------------------
-      // NEGATIVE MARKS
-      // ----------------------------------------------------------
-
-      if (
-        q.negativeMarks !== 0
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: negativeMarks must be 0`
-        );
+      if (q.negativeMarks !== 0) {
+        throw new Error(`Question ${number}: negativeMarks must be 0`);
       }
 
-      // ----------------------------------------------------------
-      // ACTIVE
-      // ----------------------------------------------------------
-
-      if (
-        q.isActive !== true
-      ) {
-        throw new Error(
-          `Question ${questionNumber}: isActive must be true`
-        );
+      if (q.isActive !== true) {
+        throw new Error(`Question ${number}: isActive must be true`);
       }
     }
 
-    // ============================================================
-    // BOTH MODE VALIDATION
-    // ============================================================
+    if (questionType === "BOTH" && requestedCount >= 2) {
+      const singleCount = result.filter(
+        q => q.questionType === "SINGLE"
+      ).length;
 
-    if (
-      questionType === "BOTH" &&
-      requestedCount > 1
-    ) {
-      const singleCount =
-        result.filter(
-          (q) =>
-            q.questionType ===
-            "SINGLE"
-        ).length;
+      const multipleCount = result.filter(
+        q => q.questionType === "MULTIPLE"
+      ).length;
 
-      const multipleCount =
-        result.filter(
-          (q) =>
-            q.questionType ===
-            "MULTIPLE"
-        ).length;
-
-      if (
-        singleCount === 0 ||
-        multipleCount === 0
-      ) {
+      if (singleCount === 0 || multipleCount === 0) {
         throw new Error(
           "BOTH mode must contain both SINGLE and MULTIPLE questions"
         );
       }
+
+      if (
+        requestedCount === 2 &&
+        (singleCount !== 1 || multipleCount !== 1)
+      ) {
+        throw new Error(
+          "BOTH mode with two questions must contain one of each type"
+        );
+      }
     }
 
-    // ============================================================
-    // SUCCESS
-    // ============================================================
-
-    console.log(
-      `Successfully generated ${result.length} MCQs`
-    );
-
-    console.log(
-      "Question types:",
-      result.map(
-        (q) =>
-          q.questionType
-      )
-    );
-
     return result;
-
-  } catch (error) {
-    console.error(
-      "========================================"
-    );
-
-    console.error(
-      "INVALID MCQ RESPONSE"
-    );
-
-    console.error(
-      "========================================"
-    );
-
-    console.error(
-      error.message
-    );
-
-    console.error(
-      "Raw response:"
-    );
-
-    console.error(
-      content
-    );
-
-    throw new Error(
-      `Groq returned invalid MCQs: ${error.message}`
-    );
   }
+
+  // ============================================================
+  // GENERATE WITH RETRIES
+  // ============================================================
+
+  const MAX_ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    content = "";
+
+    try {
+      console.log(
+        `Generating ${requestedCount} ${difficulty} MCQs. ` +
+        `Attempt ${attempt}/${MAX_ATTEMPTS}`
+      );
+
+      const messages = [
+        {
+          role: "system",
+          content: systemPrompt
+        },
+        {
+          role: "user",
+          content:
+            attempt === 1
+              ? userPrompt
+              : `${userPrompt}
+
+IMPORTANT: Your previous response was invalid.
+Generate the complete JSON array again from the beginning.
+Ensure every string is properly escaped and all brackets are closed.
+Do not shorten the array by omitting requested questions.
+Return only valid JSON.`
+        }
+      ];
+
+      const response = await groq.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.2,
+        max_tokens: 8192
+      });
+
+      const choice = response?.choices?.[0];
+
+      content = choice?.message?.content ?? "";
+
+      const finishReason = choice?.finish_reason;
+
+      console.log("MCQ finish_reason:", finishReason);
+
+      if (!content.trim()) {
+        throw new Error(
+          "Groq returned an empty response. Check the model and API response."
+        );
+      }
+
+      if (finishReason === "length") {
+        throw new Error(
+          "The model reached its output token limit. Reduce the question " +
+          "count or use a model that supports a higher output limit."
+        );
+      }
+
+      console.log("MCQ response received:", content.length, "characters");
+
+      const result = parseMCQResponse(content);
+
+      validateMCQs(result);
+
+      console.log(
+        `Successfully generated and validated ${result.length} MCQs`
+      );
+
+      console.log(
+        "Question types:",
+        result.map(q => q.questionType)
+      );
+
+      return result;
+
+    } catch (error) {
+      lastError = error;
+
+      console.error("========================================");
+      console.error(`MCQ GENERATION FAILED - ATTEMPT ${attempt}`);
+      console.error("Reason:", error.message);
+      console.error("========================================");
+
+      if (content) {
+        console.error("Raw response:");
+        console.error(content);
+      } else {
+        console.error("Raw response: (empty)");
+      }
+
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn("Retrying MCQ generation...");
+      }
+    }
+  }
+
+  throw new Error(
+    `Groq failed to generate valid MCQs after ${MAX_ATTEMPTS} attempts: ` +
+    `${lastError?.message || "Unknown error"}`
+  );
 }
 
 

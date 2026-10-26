@@ -70,7 +70,7 @@ function parseCodingQuestions(content) {
 }
 
 
-async function generateMCQs(topic, category, count, questionType) {
+async function generateMCQs(topic, category, count, questionType, difficulty) {
   let content = "";
 
   try {
@@ -164,7 +164,7 @@ Required structure:
       "correctAnswers": [
         "Option A"
       ],
-      "difficulty": "Easy",
+      "difficulty": "${difficulty}",
       "category": "${category}",
       "marks": 1,
       "negativeMarks": 0,
@@ -188,8 +188,7 @@ GENERAL REQUIREMENTS
 5. correctAnswers must always be an array.
 6. Every correct answer must exactly match an option.
 7. Do not include answers that are absent from the options.
-8. difficulty must be exactly "Easy", "Medium", or "Hard".
-9. Mix difficulties when possible.
+8. difficulty must be exactly ${difficulty}.
 10. category must exactly equal "${category}".
 11. marks must be the number 1.
 12. negativeMarks must be the number 0.
