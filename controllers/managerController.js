@@ -2070,6 +2070,32 @@ const getAssignedQuestions = async (req, res) => {
   }
 };
 
+const CandidateProcessLog = require("../models/CandidateProcessLog");
+
+ const getBackgroundapplications = async (req, res) => {
+  try {
+    const { candidateId } = req.params;
+
+    const logs = await CandidateProcessLog.findAll({
+      where: { candidateId },
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({
+      success: true,
+      candidateId,
+      data: logs,
+    });
+  } catch (error) {
+    console.error("Error fetching background processes:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
 module.exports = {
     addEmployee,addCandidate,viewCandidate,viewEmployee,createQuestion,
     getAllQuestions,getQuestionById,createMcqQuestion,getAllMcqQuestions,
@@ -2077,5 +2103,5 @@ module.exports = {
     updateMCQ,updateQuestion,getInterviewByUserId,viewInterviewEligibleCandidates,
     scheduleInterview,validateCandidate,validateCandidateCoding,generateCandidateResult,
     getCandidateResult,addInterviewQuestion,getAllInterviewQuestions,generateAndSaveInterviewQuestions,updateCandidateSchedule,
-    assignCandidateQuestions , getDashboard , getAssignedQuestions
+    assignCandidateQuestions , getDashboard , getAssignedQuestions , getBackgroundapplications
 };

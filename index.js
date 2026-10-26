@@ -12,6 +12,7 @@ require("./models/Bitsexam");
 require("./models/MCQQuestion");
 require("./models/CandidateResult");
 require("./models/InterviewQuestion");
+require("./models/CandidateProcessLog");
 require('dotenv').config();
 
 const app = express();

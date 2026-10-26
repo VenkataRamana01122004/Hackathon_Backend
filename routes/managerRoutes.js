@@ -45,4 +45,5 @@ router.post("/assignCandidateQuestions",managercontroller.assignCandidateQuestio
 router.get("/dashboard", managercontroller.getDashboard);
 router.get("/assigned-questions/:candidateId", managercontroller.getAssignedQuestions);
 
+router.get("/background-process/:candidateId", managercontroller.getBackgroundapplications);
 module.exports = router;
