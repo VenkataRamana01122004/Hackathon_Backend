@@ -28,7 +28,7 @@ const addCandidate = async (req, res) => {
     const candidate = await Candidate.create({
       fullName: req.body.fullName,
       email: req.body.email,
-      password: req.body.password,
+      password: req.body.email,
       phone: req.body.phone,
       grade: req.body.grade,
       gender: req.body.gender,
@@ -1505,7 +1505,7 @@ const generateCandidateResult = async (req, res) => {
       ).toFixed(2)
     );
 
-    const PASSING_PERCENTAGE = 15;
+    const PASSING_PERCENTAGE =70;
 
     const bitsExamStatus =
       mcqPercentage >= PASSING_PERCENTAGE ? "Passed" : "Failed";
